@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EGX Strategy Lab</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">EGX Strategy Lab</p>
+        <h1>MA Crossover Walk-Forward Backtester</h1>
+      </div>
+      <div class="topbar__actions">
+        <span id="backendBadge" class="badge">backend: checking…</span>
+        <button id="themeToggle" class="btn btn--ghost" type="button">☀️ Light</button>
+        <button id="refreshBtn" class="btn btn--ghost" type="button">↻ Refresh</button>
+      </div>
+    </header>
+
+    <section class="panel control-panel">
+      <div class="controls">
+        <label class="field">
+          <span>Asset</span>
+          <select id="assetSelect" aria-label="Select asset"></select>
+        </label>
+        <label class="field">
+          <span>Cash</span>
+          <input id="initialCash" type="number" min="1" step="1" value="1000" />
+        </label>
+        <label class="field">
+          <span>Fast MA</span>
+          <input id="fastWindow" type="number" min="1" step="1" value="9" />
+        </label>
+        <label class="field">
+          <span>Slow MA</span>
+          <input id="slowWindow" type="number" min="1" step="1" value="20" />
+        </label>
+      </div>
+
+      <div class="control-actions">
+        <button id="runBtn" class="btn btn--primary" type="button">Run Backtest</button>
+        <button id="resetBtn" class="btn btn--ghost" type="button">Reset</button>
+      </div>
+
+      <div id="statusBanner" class="status-banner" role="status" aria-live="polite"></div>
+    </section>
+
+    <section id="kpiRow" class="kpi-row"></section>
+
+    <section id="resultsSection" class="results-section" hidden>
+      <article class="panel chart-panel chart-panel--wide">
+        <div class="panel__header">
+          <div>
+            <h3>Price & Strategy</h3>
+            <p>Close price, MA9/MA20, and trade signals in a compact view</p>
+          </div>
+          <div class="panel__tools">
+            <button id="fullscreenBtn" class="icon-btn" type="button" title="Fullscreen chart">⤢</button>
+            <button id="downloadBtn" class="icon-btn" type="button" title="Download PNG">⬇</button>
+          </div>
+        </div>
+        <div class="chart-wrap chart-wrap--wide">
+          <canvas id="priceChart"></canvas>
+        </div>
+      </article>
+
+      <div class="chart-grid">
+        <article class="panel chart-panel">
+          <div class="panel__header">
+            <div>
+              <h3>Portfolio Value</h3>
+              <p>Equity curve over the backtest window</p>
+            </div>
+          </div>
+          <div class="chart-wrap chart-wrap--compact">
+            <canvas id="portfolioChart"></canvas>
+          </div>
+        </article>
+
+        <article class="panel chart-panel">
+          <div class="panel__header">
+            <div>
+              <h3>Drawdown</h3>
+              <p>Peak-to-trough decline in portfolio value</p>
+            </div>
+          </div>
+          <div class="chart-wrap chart-wrap--compact">
+            <canvas id="drawdownChart"></canvas>
+          </div>
+        </article>
+      </div>
+
+      <div class="content-grid">
+        <article class="panel summary-card">
+          <div class="panel__header panel__header--tight">
+            <div>
+              <h3>Strategy Summary</h3>
+              <p>How the logic behaves</p>
+            </div>
+          </div>
+          <div id="summaryText" class="summary-list"></div>
+          <div id="summaryBadges" class="pill-row"></div>
+        </article>
+
+        <article class="panel summary-card">
+          <div class="panel__header panel__header--tight">
+            <div>
+              <h3>Position Snapshot</h3>
+              <p>Current holdings and latest trade</p>
+            </div>
+          </div>
+          <div id="positionSnapshot" class="summary-list"></div>
+        </article>
+      </div>
+
+      <article class="panel trade-panel">
+        <div class="panel__header panel__header--tight">
+          <div>
+            <h3>Trade History</h3>
+            <p>Filtered and searchable signals</p>
+          </div>
+          <div class="trade-toolbar">
+            <input id="tradeSearch" type="search" placeholder="Search trades" />
+            <select id="tradeFilter">
+              <option value="ALL">All</option>
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+            <select id="tradeSort">
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Operation</th>
+                <th>Price</th>
+                <th>Shares</th>
+                <th>Portfolio Value</th>
+              </tr>
+            </thead>
+            <tbody id="tradeTableBody"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section id="emptyState" class="empty-state">
+      <h3>No strategy run yet</h3>
+      <p>Select an asset and run a backtest to inspect KPIs and charts.</p>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+"""
+models.py — WEEK 2. Minimal PyTorch models. You EXTEND these, you don't derive them.
+
+These ship COMPLETE and working — the exercise is to modify them: add a layer,
+change the width, add dropout, swap the loss, retrain, and see if the TEST error
+improves. That's real ML engineering, no math required.
+"""
+from __future__ import annotations
+import torch
+import torch.nn as nn
+
+
+class MLP(nn.Module):
+    """Fully-connected return predictor.
+
+    EXTEND ME: add another `nn.Linear(hidden, hidden)` + `nn.ReLU()` before the
+    final layer, or try `nn.Dropout(0.2)`. Then retrain and compare test loss.
+    """
+    def __init__(self, n_features: int, hidden: int = 32):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(n_features, hidden),
+            nn.ReLU(),
+            # <-- add more layers here to extend the model
+            nn.Linear(hidden, 1),
+        )
+
+    def forward(self, x):
+        return self.net(x).squeeze(-1)
+
+
+class LSTMRegressor(nn.Module):
+    """Sequence return predictor. Input shape: (batch, seq_len, n_features).
+
+    EXTEND ME: try `num_layers=2`, or a larger `hidden`, or add a dropout before
+    the head.
+    """
+    def __init__(self, n_features: int, hidden: int = 32):
+        super().__init__()
+        self.lstm = nn.LSTM(n_features, hidden, batch_first=True)
+        self.head = nn.Linear(hidden, 1)
+
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        return self.head(out[:, -1, :]).squeeze(-1)
