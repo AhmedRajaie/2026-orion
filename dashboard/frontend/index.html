@@ -1,19 +1,135 @@
 <!doctype html>
+
 <html>
+
 <head>
-  <meta charset="utf-8"/>
-  <title>Trading Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; background:#0b1220; color:#e6edf3; }
-    .panel { background:#111a2b; border-radius:10px; padding:16px; margin-bottom:20px; }
-    h1 { font-weight:600; }
-  </style>
+
+<meta charset="utf-8">
+
+<title>Trading Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body{
+
+font-family:Arial;
+
+background:#0b1220;
+
+color:white;
+
+margin:30px;
+
+}
+
+.panel{
+
+background:#111a2b;
+
+padding:15px;
+
+border-radius:10px;
+
+margin-bottom:20px;
+
+}
+
+.stats{
+
+display:grid;
+
+grid-template-columns:repeat(2,250px);
+
+gap:15px;
+
+margin-bottom:20px;
+
+}
+
+.card{
+
+background:#111a2b;
+
+padding:15px;
+
+border-radius:10px;
+
+}
+
+canvas{
+
+background:white;
+
+border-radius:10px;
+
+padding:10px;
+
+}
+
+</style>
+
 </head>
+
 <body>
-  <h1>Trading Dashboard</h1>
-  <div class="panel" id="status">connecting…</div>
-  <!-- TASK_02+ : add <canvas> panels for price, indicators, equity curve -->
-  <script src="app.js"></script>
+
+<h1>Trading Dashboard</h1>
+
+<div class="panel" id="status">Connecting...</div>
+
+<div class="stats">
+
+<div class="card">
+
+<b>Stock</b>
+
+<p id="symbol"></p>
+
+</div>
+
+<div class="card">
+
+<b>Portfolio Value</b>
+
+<p id="portfolio"></p>
+
+</div>
+
+<div class="card">
+
+<b>Maximum Drawdown</b>
+
+<p id="drawdown"></p>
+
+</div>
+
+<div class="card">
+
+<b>Buy Operations</b>
+
+<p id="buy"></p>
+
+</div>
+
+<div class="card">
+
+<b>Sell Operations</b>
+
+<p id="sell"></p>
+
+</div>
+
+</div>
+
+<div class="panel">
+
+<canvas id="priceChart"></canvas>
+
+</div>
+
+<script src="app.js"></script>
+
 </body>
+
 </html>
