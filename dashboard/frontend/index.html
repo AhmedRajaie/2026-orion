@@ -13,6 +13,40 @@
 <body>
   <h1>Trading Dashboard</h1>
   <div class="panel" id="status">connecting…</div>
+  <div class="panel" id="symbolPanel">
+    <label for="symbolFilter">Filter symbols:</label>
+    <input id="symbolFilter" type="text" placeholder="Type to filter symbols" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:1px solid #334155;background:#090f1a;color:#e6edf3;" />
+    <select id="symbolSelect" style="width:100%;margin-top:12px;padding:8px;border-radius:8px;border:1px solid #334155;background:#090f1a;color:#e6edf3;"></select>
+  </div>
+  <div class="panel" id="metrics">
+    <strong>Backtest summary</strong>
+    <div id="metricsContent" style="margin-top:8px;color:#cbd5e1;">No backtest run yet</div>
+  </div>
+  <div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+    <div>
+      <button id="exportCsvBtn" style="padding:8px 12px;border-radius:8px;border:none;background:#2563eb;color:white;cursor:pointer;">Export backtest CSV</button>
+    </div>
+    <div style="color:#cbd5e1;font-size:14px;">Download a CSV with date, price, sma9, sma20, equity and trade info.</div>
+  </div>
+  <div class="panel" id="tradesPanel">
+    <strong>Trades</strong>
+    <div style="margin-top:8px;overflow:auto;max-height:240px;">
+      <table id="tradesTable" style="width:100%;border-collapse:collapse;color:#e6edf3;">
+        <thead style="position:sticky;top:0;background:#0b1220;"><tr>
+          <th style="text-align:left;padding:6px;border-bottom:1px solid #24303f;">#</th>
+          <th style="text-align:left;padding:6px;border-bottom:1px solid #24303f;">Date</th>
+          <th style="text-align:left;padding:6px;border-bottom:1px solid #24303f;">Type</th>
+          <th style="text-align:right;padding:6px;border-bottom:1px solid #24303f;">Price</th>
+          <th style="text-align:right;padding:6px;border-bottom:1px solid #24303f;">Shares</th>
+          <th style="text-align:right;padding:6px;border-bottom:1px solid #24303f;">Cash</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="panel">
+    <canvas id="priceChart" width="800" height="300" style="width:100%;height:320px;"></canvas>
+  </div>
   <!-- TASK_02+ : add <canvas> panels for price, indicators, equity curve -->
   <script src="app.js"></script>
 </body>
