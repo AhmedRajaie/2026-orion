@@ -1,19 +1,48 @@
-<!doctype html>
-<html>
+﻿<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trading Dashboard</title>
+  <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; background:#0b1220; color:#e6edf3; }
-    .panel { background:#111a2b; border-radius:10px; padding:16px; margin-bottom:20px; }
-    h1 { font-weight:600; }
-  </style>
 </head>
 <body>
-  <h1>Trading Dashboard</h1>
-  <div class="panel" id="status">connecting…</div>
-  <!-- TASK_02+ : add <canvas> panels for price, indicators, equity curve -->
+  <div class="page-shell">
+    <header class="topbar">
+      <div class="topbar__brand">
+        <p class="eyebrow">Live Backtest Dashboard</p>
+        <h1>Trading Dashboard</h1>
+        <p class="subtitle">Visualize price action, portfolio performance, drawdown, and key metrics in one modern view.</p>
+      </div>
+
+      <div class="topbar__actions">
+        <label for="stockSelector">Select stock</label>
+        <select id="stockSelector"></select>
+        <p class="status">Status: <span id="status">Loading...</span></p>
+      </div>
+    </header>
+
+    <section class="kpi-grid" id="kpiGrid"></section>
+
+    <section class="chart-grid">
+      <article class="chart-card">
+        <div class="chart-header"><h2>Price + SMA9 + SMA20</h2></div>
+        <canvas id="priceChart"></canvas>
+      </article>
+
+      <article class="chart-card">
+        <div class="chart-header"><h2>Portfolio Value</h2></div>
+        <canvas id="portfolioChart"></canvas>
+      </article>
+
+      <article class="chart-card">
+        <div class="chart-header"><h2>Drawdown</h2></div>
+        <canvas id="drawdownChart"></canvas>
+      </article>
+    </section>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
