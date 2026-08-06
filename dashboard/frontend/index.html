@@ -3,17 +3,255 @@
 <head>
   <meta charset="utf-8"/>
   <title>Trading Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; background:#0b1220; color:#e6edf3; }
-    .panel { background:#111a2b; border-radius:10px; padding:16px; margin-bottom:20px; }
-    h1 { font-weight:600; }
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 24px;
+      background: #07111f;
+      color: #e6edf3;
+    }
+    .panel {
+      background: #121c2d;
+      border: 1px solid #21304d;
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+    }
+    h1 {
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .panel h2 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      font-size: 1.05rem;
+      color: #8fb4ff;
+    }
+    .chart-wrap {
+      position: relative;
+      height: 500px;
+      margin-bottom: 12px;
+    }
+    .chart-message {
+      margin-top: 8px;
+      color: #fbbf24;
+      font-weight: 600;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .control-row {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+    .control-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.9rem;
+    }
+    .control-field label {
+      color: #8da1bf;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .control-field input,
+    .control-field select,
+    .control-field button {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #223653;
+      background: #0d1728;
+      color: #f8fafc;
+      font: inherit;
+    }
+    .control-field button {
+      cursor: pointer;
+      background: #1d4ed8;
+      border-color: #1d4ed8;
+    }
+    .strategy-status {
+      margin-top: 8px;
+      min-height: 1.2em;
+      color: #8fb4ff;
+      font-size: 0.92rem;
+    }
+    .trade-table-wrap {
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th,
+    td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid #223653;
+    }
+    th {
+      color: #8da1bf;
+      font-weight: 600;
+    }
+    .empty-state {
+      color: #8da1bf;
+      font-style: italic;
+      padding: 12px 0;
+    }
+    .kpi-card {
+      background: #0d1728;
+      border: 1px solid #223653;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .kpi-label {
+      display: block;
+      color: #8da1bf;
+      font-size: 0.8rem;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .kpi-value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    @media (max-width: 860px) {
+      .kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
   </style>
 </head>
 <body>
   <h1>Trading Dashboard</h1>
   <div class="panel" id="status">connecting…</div>
-  <!-- TASK_02+ : add <canvas> panels for price, indicators, equity curve -->
+  <div class="panel">
+    <h2>MA9–MA20 Strategy</h2>
+    <div class="control-row">
+      <div class="control-field">
+        <label for="symbolSelect">Stock</label>
+        <select id="symbolSelect"></select>
+      </div>
+      <div class="control-field">
+        <label for="fastWindow">Fast MA</label>
+        <input id="fastWindow" type="number" value="9" min="1" />
+      </div>
+      <div class="control-field">
+        <label for="slowWindow">Slow MA</label>
+        <input id="slowWindow" type="number" value="20" min="2" />
+      </div>
+      <div class="control-field">
+        <label for="initialCash">Initial cash</label>
+        <input id="initialCash" type="number" value="1000" min="1" step="100" />
+      </div>
+      <div class="control-field">
+        <label for="runBacktestButton">Action</label>
+        <button id="runBacktestButton" type="button">Run backtest</button>
+      </div>
+    </div>
+    <div id="strategyStatus" class="strategy-status">Select a symbol and run a backtest.</div>
+  </div>
+  <div class="panel">
+    <h2>Price Overview</h2>
+    <div class="chart-wrap">
+      <canvas id="strategyPriceChart"></canvas>
+    </div>
+    <div id="chartMessage" class="chart-message">Loading market data…</div>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <span class="kpi-label">Final portfolio value</span>
+        <div class="kpi-value" id="kpiFinalValue">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Profit / loss</span>
+        <div class="kpi-value" id="kpiProfitLoss">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Total return</span>
+        <div class="kpi-value" id="kpiTotalReturn">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Maximum drawdown</span>
+        <div class="kpi-value" id="kpiMaxDrawdown">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Maximum drawdown %</span>
+        <div class="kpi-value" id="kpiMaxDrawdownPct">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Buy operations</span>
+        <div class="kpi-value" id="kpiBuyOperations">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Sell operations</span>
+        <div class="kpi-value" id="kpiSellOperations">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Completed trades</span>
+        <div class="kpi-value" id="kpiCompletedTrades">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Market exposure</span>
+        <div class="kpi-value" id="kpiExposure">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Final position</span>
+        <div class="kpi-value" id="kpiFinalPosition">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Buy-and-hold return</span>
+        <div class="kpi-value" id="kpiBuyHoldReturn">—</div>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Excess return</span>
+        <div class="kpi-value" id="kpiExcessReturn">—</div>
+      </div>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Portfolio Performance</h2>
+    <div class="chart-wrap">
+      <canvas id="portfolioChart"></canvas>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Trade history</h2>
+    <div class="trade-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Operation</th>
+            <th>Date</th>
+            <th>Price</th>
+            <th>Shares</th>
+            <th>Cash after</th>
+            <th>Portfolio after</th>
+          </tr>
+        </thead>
+        <tbody id="tradeTableBody">
+          <tr>
+            <td colspan="6" class="empty-state">No trades yet. Run a backtest to populate this table.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>
