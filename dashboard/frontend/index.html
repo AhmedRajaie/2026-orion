@@ -1,19 +1,499 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8"/>
+  <meta charset="UTF-8" />
   <title>Trading Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; background:#0b1220; color:#e6edf3; }
-    .panel { background:#111a2b; border-radius:10px; padding:16px; margin-bottom:20px; }
-    h1 { font-weight:600; }
+    :root {
+      --bg: #020617;
+      --panel: linear-gradient(145deg, #111827, #1f2937);
+      --panel-border: rgba(148, 163, 184, 0.16);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+      --accent-2: #f59e0b;
+      --accent-3: #34d399;
+      --accent-4: #fb7185;
+      --grid: rgba(148, 163, 184, 0.16);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 24px 20px 40px;
+    }
+
+    .page-shell {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    .page-header {
+      margin-bottom: 20px;
+    }
+
+    .page-header h1 {
+      font-size: 24px;
+      margin: 0 0 6px;
+      letter-spacing: 0.01em;
+    }
+
+    .page-subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .section-group {
+      margin-bottom: 24px;
+    }
+
+    .section-heading {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: #7dd3fc;
+      margin: 0 0 10px 8px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 20px;
+      margin: 0 auto 16px auto;
+      box-shadow: 0 16px 40px rgba(2, 6, 23, 0.25);
+    }
+
+    .strategy-trade-tooltip {
+      position: fixed;
+      z-index: 20;
+      min-width: 190px;
+      max-width: 240px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: linear-gradient(145deg, #111827, #1f2937);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      box-shadow: 0 16px 40px rgba(2, 6, 23, 0.35);
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.45;
+      pointer-events: none;
+    }
+
+    .strategy-trade-tooltip strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .panel--compact {
+      height: auto;
+    }
+
+    .panel--chart {
+      height: 380px;
+    }
+
+    .panel-title {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      margin: 0 0 12px;
+      color: var(--text);
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .panel.is-loading {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .panel.is-loading::after {
+      content: "Loading...";
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2, 6, 23, 0.58);
+      color: #f8fafc;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      border-radius: 16px;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .panel.is-loading canvas {
+      opacity: 0.4;
+    }
+
+    .symbol-select {
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: #0f172a;
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      min-width: 180px;
+    }
+
+    #status {
+      font-family: "SFMono-Regular", Consolas, monospace;
+      color: #cbd5e1;
+      font-size: 13px;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    #universeToggle,
+    #timeRangeToggle {
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+
+    .universe-btn,
+    .range-btn {
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: #0f172a;
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .universe-btn.active,
+    .range-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #f8fafc;
+    }
+
+    #featuresPanel {
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .feature-row {
+      display:grid;
+      grid-template-columns: minmax(120px, 1fr) 1fr 70px;
+      align-items:center;
+      gap:10px;
+      font-size:13px;
+    }
+
+    .feature-bar {
+      height:8px;
+      border-radius:999px;
+      background:#334155;
+      overflow:hidden;
+    }
+
+    .feature-bar > span {
+      display:block;
+      height:100%;
+      background:linear-gradient(90deg, var(--accent), var(--accent-3));
+      border-radius:999px;
+    }
+
+    .feature-value {
+      text-align:right;
+      color:#cbd5e1;
+    }
+
+    #strategyStats {
+      display:grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    #strategyStats .stat {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 12px 14px;
+      min-height: 84px;
+    }
+
+    #strategyStats .stat .label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    #strategyStats .stat .value {
+      font-size: 18px;
+      font-weight: 700;
+      margin-top: 6px;
+      color: var(--text);
+    }
+
+    #startingCashInput {
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: #0f172a;
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 999px;
+      width: 110px;
+      font-size: 13px;
+    }
+
+    #strategySummaryPanel p {
+      margin: 0 0 12px;
+      color: #cbd5e1;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+
+    .summary-grid strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .table-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .table-controls input,
+    .table-controls button {
+      border-radius: 999px;
+    }
+
+    #tradeSearchInput {
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: #0f172a;
+      color: var(--text);
+      padding: 10px 14px;
+      min-width: 220px;
+      width: 100%;
+    }
+
+    .trade-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: rgba(15, 23, 42, 0.8);
+    }
+
+    .trade-table th,
+    .trade-table td {
+      padding: 12px 14px;
+      text-align: left;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+      color: #cbd5e1;
+      font-size: 13px;
+    }
+
+    .trade-table th {
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+
+    .trade-table tbody tr:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-yes {
+      background: rgba(52, 211, 153, 0.15);
+      color: #34d399;
+    }
+
+    .badge-no {
+      background: rgba(148, 163, 184, 0.16);
+      color: #94a3b8;
+    }
+
+    @media (max-width: 960px) {
+      #strategyStats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .summary-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      #strategyStats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
   </style>
 </head>
 <body>
-  <h1>Trading Dashboard</h1>
-  <div class="panel" id="status">connecting…</div>
-  <!-- TASK_02+ : add <canvas> panels for price, indicators, equity curve -->
+  <div class="page-shell">
+    <header class="page-header">
+      <h1>Trading Dashboard</h1>
+      <p class="page-subtitle">A simple view of price action, strategy signals, and portfolio performance.</p>
+    </header>
+
+    <section class="section-group">
+      <div class="section-heading">Status & Controls</div>
+      <div class="panel panel--compact">
+        <div class="status-row">
+          <div id="status">checking backend...</div>
+          <div class="control-group">
+            <strong>Universe:</strong>
+            <div id="universeToggle" role="group" aria-label="Universe selection">
+              <button type="button" data-universe="small" class="universe-btn active">Small universe</button>
+              <button type="button" data-universe="full" class="universe-btn">Full universe</button>
+            </div>
+            <strong>Asset:</strong>
+            <select id="symbolSelect" class="symbol-select" aria-label="Asset selector">
+              <option value="">Loading symbols…</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-group">
+      <div class="section-heading">Price & Strategy</div>
+      <div id="pricePanel" class="panel panel--chart">
+        <div class="panel-title" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <span>Price Chart</span>
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <label for="startingCashInput" style="font-size:13px; color:var(--muted);">Starting Cash</label>
+            <input id="startingCashInput" type="number" min="0" step="50" value="1000" />
+            <div id="timeRangeToggle" role="group" aria-label="Time range selection">
+              <button type="button" data-range="all" class="range-btn active">All</button>
+              <button type="button" data-range="10y" class="range-btn">10Y</button>
+              <button type="button" data-range="5y" class="range-btn">5Y</button>
+              <button type="button" data-range="1y" class="range-btn">1Y</button>
+              <button type="button" data-range="6m" class="range-btn">6M</button>
+              <button type="button" data-range="1m" class="range-btn">1M</button>
+            </div>
+          </div>
+        </div>
+        <canvas id="priceChart"></canvas>
+      </div>
+
+      <div id="strategyPanel" class="panel panel--chart">
+        <div class="panel-title">MA9 / MA20 Strategy</div>
+        <canvas id="strategyChart"></canvas>
+      </div>
+
+      <div id="drawdownPanel" class="panel panel--chart">
+        <div class="panel-title">Drawdown Over Time</div>
+        <canvas id="drawdownChart"></canvas>
+      </div>
+
+      <div id="strategySummaryPanel" class="panel panel--compact">
+        <div class="panel-title">Strategy Summary</div>
+        <p>Buy when the fast MA crosses above the slow MA. Sell when it crosses below.</p>
+        <div class="summary-grid">
+          <div><strong>Starting cash:</strong> <span id="summaryStartingCash">1000</span></div>
+          <div><strong>Selected asset:</strong> <span id="summaryAsset">-</span></div>
+          <div><strong>Open position:</strong> <span id="summaryOpenPosition">No</span></div>
+        </div>
+      </div>
+
+      <div id="strategyStats">
+        <div class="stat"><div class="label">Final Value</div><div class="value" id="statFinalValue">-</div></div>
+        <div class="stat"><div class="label">Buys</div><div class="value" id="statBuyCount">-</div></div>
+        <div class="stat"><div class="label">Sells</div><div class="value" id="statSellCount">-</div></div>
+        <div class="stat"><div class="label">Max Drawdown</div><div class="value" id="statMaxDrawdown">-</div></div>
+        <div class="stat"><div class="label">P/L</div><div class="value" id="statPL">-</div></div>
+        <div class="stat"><div class="label">Return %</div><div class="value" id="statReturnPct">-</div></div>
+        <div class="stat"><div class="label">Open Position</div><div class="value" id="statOpenPosition">-</div></div>
+      </div>
+
+      <div id="tradeHistoryPanel" class="panel panel--compact">
+        <div class="panel-title">Trade History</div>
+        <div class="table-controls">
+          <input id="tradeSearchInput" type="search" placeholder="Search date or operation" aria-label="Search trades" />
+          <button id="tradeSortBtn" type="button" class="range-btn">Newest first</button>
+        </div>
+        <div class="table-wrapper">
+          <table id="tradeHistoryTable" class="trade-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Operation</th>
+                <th>Price</th>
+                <th>Shares</th>
+                <th>Portfolio Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="5" style="text-align:center; color: var(--muted);">Loading trades…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="equityPanel" class="panel panel--chart">
+        <div class="panel-title">Equity Curve vs Benchmark</div>
+        <canvas id="equityChart"></canvas>
+      </div>
+    </section>
+
+    <section class="section-group">
+      <div class="section-heading">Model Inputs</div>
+      <div id="featuresPanelWrapper" class="panel panel--compact">
+        <div class="panel-title">Model input (features)</div>
+        <div id="featuresPanel">Loading features…</div>
+      </div>
+    </section>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
