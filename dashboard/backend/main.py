@@ -113,3 +113,46 @@ def get_backtest(symbol: str, fast: int = 9, slow: int = 20, initial_capital: fl
         "buy_count": buy_count,
         "sell_count": sell_count,
     }
+from tradinglab.simulator import PortfolioSimulator
+from tradinglab.backtester import run_backtest
+from tradinglab.strategies.sma import sma_crossover_weights
+from tradinglab.metrics import total_return, max_drawdown
+from .strategy_new import run_universe_weekly_threshold  # if this errors, try: from dashboard.backend.strategy_new import run_universe_weekly_threshold
+
+COMPARISON_UNIVERSE = ['COMI', 'HRHO', 'TMGH', 'SWDY', 'FWRY', 'ABUK']
+COMPARISON_CAPITAL = 1000.0
+@app.get("/strategy-comparison")
+def get_strategy_comparison():
+    comp_feed = DataFeed.from_dir(str(REPO_ROOT / "data" / "egx"), symbols=COMPARISON_UNIVERSE)
+    sim = PortfolioSimulator(comp_feed, commission=0.005)
+    base_result = run_backtest(sim, lambda o: sma_crossover_weights(o, 9, 20), lookback=30)
+
+    base_dates = [str(d)[:10] for d in base_result["dates"]]
+    base_equity = (base_result["portfolio"] * COMPARISON_CAPITAL).tolist()
+
+    per_stock_seed = COMPARISON_CAPITAL / len(COMPARISON_UNIVERSE)
+    new_portfolio_equity = run_universe_weekly_threshold(
+        COMPARISON_UNIVERSE, str(REPO_ROOT / "data" / "egx"), per_stock_seed,
+        min_date=base_dates[0], max_date=base_dates[-1]
+    )
+    new_returns = new_portfolio_equity.pct_change().dropna()
+
+    return {
+        "universe": COMPARISON_UNIVERSE,
+        "base": {
+            "name": "SMA 9/20 Crossover (Notebook 4)",
+            "dates": base_dates,
+            "equity": base_equity,
+            "total_return_pct": total_return(base_result["portfolio_returns"]) * 100,
+            "max_drawdown_pct": max_drawdown(base_result["portfolio_returns"]) * 100,
+            "final_value": base_equity[-1],
+        },
+        "new": {
+            "name": "Weekly Threshold (-5% buy $5 / +10% sell $10)",
+            "dates": [str(d)[:10] for d in new_portfolio_equity.index],
+            "equity": new_portfolio_equity.tolist(),
+            "total_return_pct": total_return(new_returns) * 100,
+            "max_drawdown_pct": max_drawdown(new_returns) * 100,
+            "final_value": float(new_portfolio_equity.iloc[-1]),
+        },
+    }

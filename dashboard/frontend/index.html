@@ -110,6 +110,24 @@
     </table>
   </div>
 
+  <div class="panel">
+    <h2>Strategy Performance Comparison</h2>
+    <div class="subtitle" id="comparisonSubtitle" style="margin-bottom:16px;"></div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+      <div>
+        <h3 style="font-size:14px; color:#c7d1e0; margin-bottom:10px;">Base — SMA 9/20 Crossover</h3>
+        <div class="stats-grid" id="baseStatsGrid" style="margin-bottom:14px;"></div>
+        <canvas id="baseCompChart"></canvas>
+      </div>
+      <div>
+        <h3 style="font-size:14px; color:#c7d1e0; margin-bottom:10px;">New — Weekly Threshold</h3>
+        <div class="stats-grid" id="newStatsGrid" style="margin-bottom:14px;"></div>
+        <canvas id="newCompChart"></canvas>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

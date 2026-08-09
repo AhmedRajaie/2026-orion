@@ -1,0 +1,94 @@
+import pandas as pd
+
+def weekly_threshold_signals(
+    df: pd.DataFrame,
+    price_col: str = "close",
+    buy_drop: float = -0.05,
+    sell_rise: float = 0.10,
+    lookback_days: int = 5,   # 5 trading days ≈ 1 week
+) -> pd.DataFrame:
+    """
+    df: single-stock OHLCV dataframe, sorted by date ascending.
+    Adds: weekly_return, signal, trade_notional
+    """
+    out = df.copy()
+    out["weekly_return"] = out[price_col].pct_change(periods=lookback_days)
+
+    def classify(r):
+        if pd.isna(r):
+            return None
+        if r <= buy_drop:
+            return "BUY"
+        if r >= sell_rise:
+            return "SELL"
+        return None
+
+    out["signal"] = out["weekly_return"].apply(classify)
+    out["trade_notional"] = out["signal"].map({"BUY": 5.0, "SELL": -10.0}).fillna(0.0)
+    return out
+from pathlib import Path
+
+def load_egx_stock(path) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    df["date"] = pd.to_datetime(df["date"])
+    return df.sort_values("date").reset_index(drop=True)[["date", "close"]]
+def backtest_weekly_threshold(df, price_col="close", start_cash=100.0):
+    sig = weekly_threshold_signals(df, price_col=price_col)
+
+    cash, shares, equity = start_cash, 0.0, []
+    for _, row in sig.iterrows():
+        price = row[price_col]
+        if row["signal"] == "BUY":
+            spend = min(5.0, cash)
+            shares += spend / price
+            cash -= spend
+        elif row["signal"] == "SELL":
+            proceeds = min(10.0, shares * price)
+            shares -= proceeds / price
+            cash += proceeds
+        equity.append(cash + shares * price)
+
+    sig["equity"] = equity
+    return sig
+from tradinglab.metrics import total_return, max_drawdown
+
+comi = load_egx_stock("data/egx/COMI.csv")
+result = backtest_weekly_threshold(comi)
+
+# metrics.py expects daily % returns, not raw equity dollars
+returns_seeded = result["equity"].pct_change().dropna()
+
+print("New strategy — weekly threshold (COMI):")
+print(" total_return:", total_return(returns_seeded))
+print(" max_drawdown:", max_drawdown(returns_seeded))
+
+result[["date", "signal", "equity"]].tail(20)
+import glob
+
+UNIVERSE = ['COMI', 'HRHO', 'TMGH', 'SWDY', 'FWRY', 'ABUK']  # same 6 stocks as Notebook 4
+START_CAPITAL = 1000.0
+per_stock_seed = START_CAPITAL / len(UNIVERSE)
+
+def run_universe_weekly_threshold(symbols, data_dir="data/egx", start_cash=100.0):
+    equity_frames = []
+    for sym in symbols:
+        stock_df = load_egx_stock(f"{data_dir}/{sym}.csv")
+        bt = backtest_weekly_threshold(stock_df, start_cash=start_cash)
+        eq = bt.set_index("date")["equity"].rename(sym)
+        equity_frames.append(eq)
+
+    universe_equity = pd.concat(equity_frames, axis=1, sort=True).sort_index().ffill()
+    portfolio_equity = universe_equity.sum(axis=1)
+    return universe_equity, portfolio_equity
+
+universe_equity, portfolio_equity = run_universe_weekly_threshold(UNIVERSE, start_cash=per_stock_seed)
+
+portfolio_returns = portfolio_equity.pct_change().dropna()
+new_total_return = total_return(portfolio_returns)
+new_max_dd = max_drawdown(portfolio_returns)
+new_final_value = portfolio_equity.iloc[-1]
+
+print("New strategy — weekly threshold, same 6-stock universe as Notebook 4")
+print(f" total_return : {new_total_return:+.1%}")
+print(f" max_drawdown : {new_max_dd:.1%}")
+print(f" final value  : {new_final_value:.2f} EGP  (started at {START_CAPITAL:.0f} EGP)")

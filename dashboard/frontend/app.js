@@ -1,4 +1,4 @@
-const API = "http://localhost:8000";
+const API = "http://localhost:8001";  // ← changed from 8000 to match your running server
 let priceChart, equityChart;
 
 async function checkHealth() {
@@ -19,9 +19,9 @@ async function loadUniverse() {
   const select = document.getElementById("symbolSelect");
   select.innerHTML = universe.map(s => `<option value="${s}">${s}</option>`).join("");
   select.addEventListener("change", () => {
-  const { fast, slow } = getParams();
-  loadBacktest(select.value, fast, slow);
-});
+    const { fast, slow } = getParams();
+    loadBacktest(select.value, fast, slow);
+  });
   return universe[0];
 }
 
@@ -117,6 +117,52 @@ function getParams() {
   return { fast, slow };
 }
 
+let baseCompChart, newCompChart;
+
+function renderComparisonStats(containerId, data) {
+  const grid = document.getElementById(containerId);
+  const returnClass = data.total_return_pct >= 0 ? "positive" : "negative";
+  grid.innerHTML = `
+    <div class="stat-card"><div class="label">Final Value</div><div class="value">${data.final_value.toFixed(2)} EGP</div></div>
+    <div class="stat-card"><div class="label">Total Return</div><div class="value ${returnClass}">${data.total_return_pct.toFixed(2)}%</div></div>
+    <div class="stat-card"><div class="label">Max Drawdown</div><div class="value negative">${data.max_drawdown_pct.toFixed(2)}%</div></div>
+  `;
+}
+
+function renderComparisonChart(canvasId, data, color) {
+  const ctx = document.getElementById(canvasId).getContext("2d");
+  return new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.dates,
+      datasets: [{
+        label: "Portfolio (EGP)", data: data.equity,
+        borderColor: color, backgroundColor: color + "1a",
+        fill: true, pointRadius: 0, tension: 0.1
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: { x: { ticks: { maxTicksLimit: 8 } } }
+    }
+  });
+}
+
+async function loadStrategyComparison() {
+  const data = await fetch(`${API}/strategy-comparison`).then(r => r.json());
+
+  document.getElementById("comparisonSubtitle").textContent =
+    `Universe: ${data.universe.join(", ")} — same date range and starting capital for both strategies`;
+
+  renderComparisonStats("baseStatsGrid", data.base);
+  renderComparisonStats("newStatsGrid", data.new);
+
+  if (baseCompChart) baseCompChart.destroy();
+  if (newCompChart) newCompChart.destroy();
+  baseCompChart = renderComparisonChart("baseCompChart", data.base, "#38bdf8");
+  newCompChart = renderComparisonChart("newCompChart", data.new, "#4ade80");
+}
+
 (async function init() {
   await checkHealth();
   const firstSymbol = await loadUniverse();
@@ -128,4 +174,5 @@ function getParams() {
 
   const { fast, slow } = getParams();
   await loadBacktest(firstSymbol, fast, slow);
+  await loadStrategyComparison();
 })();
