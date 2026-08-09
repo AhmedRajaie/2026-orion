@@ -5,6 +5,7 @@ const COLORS = {
   ma20: "#a78bfa",
   strategy: "#60a5fa",
   benchmark: "#a78bfa",
+  scalping: "#f59e0b",
   buy: "#34d399",
   sell: "#fb7185",
   drawdown: "#fb7185",
@@ -17,6 +18,8 @@ let priceChartInstance = null;
 let strategyChartInstance = null;
 let drawdownChartInstance = null;
 let equityChartInstance = null;
+let baseStrategyChartInstance = null;
+let newStrategyChartInstance = null;
 let fullPriceData = null;
 let fullStrategyData = null;
 let strategyTradeTooltip = null;
@@ -690,6 +693,75 @@ async function loadFeaturesPanel() {
   }
 }
 
+function renderStrategyChart(instance, canvasId, dates, portfolio, benchmark, color) {
+  const canvasEl = document.getElementById(canvasId);
+  const ctx = canvasEl.getContext("2d");
+  if (instance) {
+    instance.destroy();
+  }
+  return new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: dates,
+      datasets: [
+        {
+          label: "Strategy",
+          data: portfolio,
+          borderColor: color,
+          pointRadius: 0,
+          tension: 0.1,
+          fill: false,
+          borderWidth: 2,
+        },
+        {
+          label: "Benchmark",
+          data: benchmark,
+          borderColor: COLORS.benchmark,
+          pointRadius: 0,
+          tension: 0.1,
+          fill: false,
+          borderWidth: 2,
+        },
+      ],
+    },
+    options: getChartOptions(),
+  });
+}
+
+function renderStrategyStats(prefix, metrics) {
+  const totalReturnPct = Number(metrics.total_return) * 100;
+  const maxDrawdownPct = Number(metrics.max_drawdown) * 100;
+  document.getElementById(`${prefix}TotalReturn`).textContent =
+    `${totalReturnPct >= 0 ? "+" : ""}${totalReturnPct.toFixed(1)}%`;
+  document.getElementById(`${prefix}Sharpe`).textContent = Number(metrics.sharpe).toFixed(2);
+  document.getElementById(`${prefix}MaxDrawdown`).textContent = `${maxDrawdownPct.toFixed(1)}%`;
+}
+
+async function loadStrategyPerformance() {
+  setPanelLoading("baseStrategyChartPanel", true);
+  setPanelLoading("newStrategyChartPanel", true);
+  try {
+    const res = await fetch(`${API}/strategies${getUniverseQuery()}`);
+    if (!res.ok) throw new Error(`/strategies returned ${res.status}`);
+    const data = await res.json();
+
+    baseStrategyChartInstance = renderStrategyChart(
+      baseStrategyChartInstance, "baseStrategyChart", data.dates, data.sma.portfolio, data.benchmark, COLORS.strategy
+    );
+    newStrategyChartInstance = renderStrategyChart(
+      newStrategyChartInstance, "newStrategyChart", data.dates, data.scalping.portfolio, data.benchmark, COLORS.scalping
+    );
+
+    renderStrategyStats("base", data.sma);
+    renderStrategyStats("new", data.scalping);
+  } catch (err) {
+    console.error("[loadStrategyPerformance] failed:", err);
+  } finally {
+    setPanelLoading("baseStrategyChartPanel", false);
+    setPanelLoading("newStrategyChartPanel", false);
+  }
+}
+
 async function loadMetrics() {
   try {
     const res = await fetch(`${API}/metrics${getUniverseQuery()}`);
@@ -727,6 +799,7 @@ async function refreshDashboard() {
     await loadPriceChart(selectedSymbol);
     await loadEquityChart();
     await loadMetrics();
+    await loadStrategyPerformance();
   } catch (err) {
     console.error("[refreshDashboard] failed:", err);
   } finally {

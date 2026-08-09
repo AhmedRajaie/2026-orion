@@ -21,6 +21,7 @@ from tradinglab.indicators import sma
 from tradinglab.metrics import max_drawdown, sharpe, total_return
 from tradinglab.simulator import PortfolioSimulator
 from tradinglab.strategies.sma import sma_crossover_weights
+from tradinglab.strategies.scalping import ScalpingStrategy
 
 app = FastAPI()
 
@@ -48,6 +49,14 @@ feeds = {
     # NOTE: removed the duplicate "ABUK" entry that was here before
     "small": DataFeed.from_dir("data/egx", symbols=["COMI", "HRHO", "TMGH", "SWDY", "FWRY", "ABUK"]),
     "full": DataFeed.from_dir("data/egx"),
+}
+
+# Factories, not shared instances: ScalpingStrategy is stateful (it remembers
+# open trades between days), so every request needs its OWN fresh instance —
+# reusing one across requests would leak yesterday's positions into today's.
+STRATEGY_FACTORIES = {
+    "sma": lambda: (sma_crossover_weights, "SMA 9/20 crossover"),
+    "scalping": lambda: (ScalpingStrategy(), "Scalping (dip entry, profit target / stop-loss)"),
 }
 
 
@@ -264,3 +273,37 @@ def get_strategy(symbol: str, universe: str = "small", cash: float = 1000.0):
         "current_shares": round2(current_shares),
         "drawdown_series": drawdown_series,
     }
+
+
+@app.get("/strategies")
+def get_strategies(universe: str = "small"):
+    """Base strategy (SMA9/20) and new strategy (scalping) backtested together,
+    for the Strategy Performance comparison panel: one equity curve + three
+    metrics per strategy, all from the same run_backtest/metrics functions
+    every other endpoint here uses."""
+    if universe not in feeds:
+        raise HTTPException(status_code=400, detail=f"Unknown universe: {universe}")
+
+    feed = feeds[universe]
+    dates = None
+    benchmark = None
+    strategies = {}
+
+    for key, factory in STRATEGY_FACTORIES.items():
+        strategy_fn, _ = factory()
+        simulator = PortfolioSimulator(feed)
+        result = run_backtest(simulator, strategy_fn, lookback=30)
+
+        if dates is None:
+            dates = [d.strftime("%Y-%m-%d") for d in result["dates"]]
+            benchmark = round2_list(result["benchmark"])
+
+        portfolio_returns = result["portfolio_returns"]
+        strategies[key] = {
+            "portfolio": round2_list(result["portfolio"]),
+            "total_return": round2(total_return(portfolio_returns)),
+            "sharpe": round2(sharpe(portfolio_returns)),
+            "max_drawdown": round2(max_drawdown(portfolio_returns)),
+        }
+
+    return {"dates": dates, "benchmark": benchmark, **strategies}

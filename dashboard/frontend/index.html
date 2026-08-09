@@ -375,6 +375,48 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .compare-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: -4px auto 16px auto;
+    }
+
+    .compare-stats .stat {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 12px 14px;
+      min-height: 84px;
+    }
+
+    .compare-stats .stat .label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .compare-stats .stat .value {
+      font-size: 18px;
+      font-weight: 700;
+      margin-top: 6px;
+      color: var(--text);
+    }
+
+    @media (max-width: 860px) {
+      .compare-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -482,6 +524,35 @@
       <div id="equityPanel" class="panel panel--chart">
         <div class="panel-title">Equity Curve vs Benchmark</div>
         <canvas id="equityChart"></canvas>
+      </div>
+    </section>
+
+    <section class="section-group">
+      <div class="section-heading">Strategy Performance</div>
+      <div class="compare-grid">
+        <div class="compare-column">
+          <div id="baseStrategyChartPanel" class="panel panel--chart">
+            <div class="panel-title">Base Strategy (SMA9/20)</div>
+            <canvas id="baseStrategyChart"></canvas>
+          </div>
+          <div class="compare-stats">
+            <div class="stat"><div class="label">Total Return</div><div class="value" id="baseTotalReturn">-</div></div>
+            <div class="stat"><div class="label">Sharpe</div><div class="value" id="baseSharpe">-</div></div>
+            <div class="stat"><div class="label">Max Drawdown</div><div class="value" id="baseMaxDrawdown">-</div></div>
+          </div>
+        </div>
+
+        <div class="compare-column">
+          <div id="newStrategyChartPanel" class="panel panel--chart">
+            <div class="panel-title">New Strategy (Scalping)</div>
+            <canvas id="newStrategyChart"></canvas>
+          </div>
+          <div class="compare-stats">
+            <div class="stat"><div class="label">Total Return</div><div class="value" id="newTotalReturn">-</div></div>
+            <div class="stat"><div class="label">Sharpe</div><div class="value" id="newSharpe">-</div></div>
+            <div class="stat"><div class="label">Max Drawdown</div><div class="value" id="newMaxDrawdown">-</div></div>
+          </div>
+        </div>
       </div>
     </section>
 
