@@ -2,6 +2,7 @@ const API_BASE = "http://127.0.0.1:8000";
 let priceChartInstance = null;
 let portfolioChartInstance = null;
 let drawdownChartInstance = null;
+let simulationChartInstance = null;
 
 async function initDashboard() {
   setStatus("Loading stock list...");
@@ -48,19 +49,27 @@ async function loadSymbol(symbol) {
   setStatus(`Loading ${symbol}...`);
 
   try {
-    const data = await fetchSymbolData(symbol);
-    console.log("Loaded data for", symbol, data);
+    const [data, simulationData] = await Promise.all([fetchSymbolData(symbol), fetchSimulations(symbol)]);
+    const mergedData = {
+      ...data,
+      dates: simulationData?.dates || data.dates,
+      simulations: simulationData?.simulations || [],
+    };
 
-    if (!isValidData(data)) {
+    console.log("Loaded data for", symbol, mergedData);
+
+    if (!isValidData(mergedData)) {
       clearCharts();
       setStatus("No data available ❌");
       return;
     }
 
-    renderKpiCards(data.metrics);
-    createPriceChart(data);
-    createPortfolioChart(data);
-    createDrawdownChart(data);
+    renderKpiCards(mergedData.metrics);
+    createPriceChart(mergedData);
+    createPortfolioChart(mergedData);
+    createDrawdownChart(mergedData);
+    createSimulationChart(mergedData);
+    renderSimulationTable(mergedData.simulations || []);
     setStatus(`Connected — ${symbol}`);
   } catch (error) {
     console.error(error);
@@ -74,6 +83,16 @@ async function fetchSymbolData(symbol) {
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Data request failed: ${response.status} ${errorText}`);
+  }
+  return await response.json();
+}
+
+async function fetchSimulations(symbol) {
+  const url = `${API_BASE}/simulations?symbol=${encodeURIComponent(symbol)}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Simulation request failed: ${response.status} ${errorText}`);
   }
   return await response.json();
 }
@@ -172,6 +191,10 @@ function clearCharts() {
     drawdownChartInstance.destroy();
     drawdownChartInstance = null;
   }
+  if (simulationChartInstance) {
+    simulationChartInstance.destroy();
+    simulationChartInstance = null;
+  }
 }
 
 function createPriceChart(data) {
@@ -220,6 +243,7 @@ function createPriceChart(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
       interaction: {
         mode: "index",
         intersect: false,
@@ -270,6 +294,7 @@ function createPortfolioChart(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
       interaction: {
         mode: "index",
         intersect: false,
@@ -341,6 +366,80 @@ function createDrawdownChart(data) {
       },
     },
   });
+}
+
+function createSimulationChart(data) {
+  if (simulationChartInstance) {
+    simulationChartInstance.destroy();
+    simulationChartInstance = null;
+  }
+
+  const labels = data.dates && data.dates.length ? data.dates : Array.from({ length: data.simulations?.[0]?.portfolio_value?.length || 0 }, (_, index) => index + 1);
+
+  const datasets = (data.simulations || []).map((simulation) => ({
+    label: simulation.name,
+    data: (simulation.portfolio_value || []).map((value) => Number(value)),
+    borderColor: simulation.color || "#38bdf8",
+    backgroundColor: "transparent",
+    tension: 0.2,
+    pointRadius: 0,
+    borderWidth: 2,
+    spanGaps: true,
+  }));
+
+  simulationChartInstance = new Chart(document.getElementById("simulationChart"), {
+    type: "line",
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { labels: { color: "#cbd5e1" } },
+        tooltip: { mode: "index", intersect: false },
+      },
+      scales: {
+        x: { ticks: { color: "#cbd5e1" }, grid: { color: "rgba(148, 163, 184, 0.12)" } },
+        y: { ticks: { color: "#cbd5e1" }, grid: { color: "rgba(148, 163, 184, 0.12)" } },
+      },
+    },
+  });
+}
+
+function renderSimulationTable(simulations) {
+  const table = document.getElementById("simulationTable");
+  if (!table) {
+    return;
+  }
+
+  table.innerHTML = "";
+  const thead = document.createElement("thead");
+  thead.innerHTML = `
+    <tr>
+      <th>Strategy</th>
+      <th>Final Value</th>
+      <th>Total Return</th>
+      <th>Max Drawdown</th>
+      <th>Sharpe</th>
+    </tr>
+  `;
+
+  const tbody = document.createElement("tbody");
+  (simulations || []).forEach((simulation) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${simulation.name}</td>
+      <td>${formatMetric(simulation.metrics?.final_portfolio_value, "currency")}</td>
+      <td>${formatMetric(simulation.metrics?.total_return_pct, "percent")}</td>
+      <td>${formatMetric(simulation.metrics?.max_drawdown_pct, "percent")}</td>
+      <td>${formatMetric(simulation.metrics?.sharpe_ratio, "number")}</td>
+    `;
+    tbody.appendChild(row);
+  });
+
+  table.appendChild(thead);
+  table.appendChild(tbody);
 }
 
 initDashboard();
