@@ -2,86 +2,292 @@
 <html>
 <head>
   <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Trading Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; background:#0b1220; color:#e6edf3; }
-    .panel { background:#111a2b; border-radius:10px; padding:16px; margin-bottom:20px; }
-    h1 { font-weight:600; }
-    .control-row { display:flex; flex-wrap:wrap; gap:12px; align-items:end; margin-bottom:12px; }
-    .control-group { display:flex; flex-direction:column; gap:6px; min-width:140px; }
-    .control-group label { font-size:0.9rem; color:#9fb0c9; }
-    .control-group input, .control-group select, .control-group button { border:1px solid #2a3a54; border-radius:6px; padding:8px 10px; background:#0b1220; color:#e6edf3; }
-    .control-group button { cursor:pointer; background:#4f8cff; border-color:#4f8cff; }
-    .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; }
-    .kpi-card { background:#0b1220; border:1px solid #23324d; border-radius:8px; padding:12px; }
-    .kpi-card .label { font-size:0.8rem; color:#9fb0c9; margin-bottom:6px; }
-    .kpi-card .value { font-size:1.05rem; font-weight:600; }
-    .kpi-card .value.positive { color:#4ade80; }
-    .kpi-card .value.negative { color:#f87171; }
-    .date-range-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
-    .date-range-label { font-size:0.9rem; color:#9fb0c9; margin-right:4px; }
-    .date-range-button { border:1px solid #2a3a54; border-radius:6px; padding:8px 10px; background:#0b1220; color:#e6edf3; cursor:pointer; }
-    .date-range-button:hover, .date-range-button:focus-visible { border-color:#4f8cff; outline:none; }
-    .date-range-button.active { background:#4f8cff; border-color:#4f8cff; color:#fff; }
-    #visibleDateRange { margin:0 0 12px; font-size:0.9rem; color:#9fb0c9; }
-    .chart-container { position:relative; height:320px; }
-    .chart-panel canvas { width:100%; height:100%; }
-    .table-wrap { overflow:auto; }
-    table { width:100%; border-collapse:collapse; }
-    th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #23324d; font-size:0.95rem; }
-    th { color:#9fb0c9; }
-    .empty-state { color:#9fb0c9; padding:12px 0; }
-    @media (max-width: 720px) {
+    :root {
+      --bg: #0b1220;
+      --panel: #111a2b;
+      --panel-border: #23324d;
+      --muted: #9fb0c9;
+      --text: #e6edf3;
+      --strategy: #4f8cff;
+      --benchmark: #f59e0b;
+      --price: #7dd3fc;
+      --buy: #22c55e;
+      --sell: #ef4444;
+      --accent: #4f8cff;
+      --line: #2a3a54;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 24px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, sans-serif;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    h2 { font-size: 1.15rem; margin-bottom: 10px; }
+    .muted { color: var(--muted); }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .control-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+    .control-group label {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .control-group input,
+    .control-group select,
+    .control-group button {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+    }
+    .control-group button {
+      cursor: pointer;
+      background: var(--accent);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+    .control-group button:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+    .inline-note {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    #status,
+    #strategyStatus {
+      min-height: 24px;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+    }
+    .kpi-card {
+      background: var(--bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .kpi-card.primary {
+      border-color: rgba(79, 140, 255, 0.45);
+      background: linear-gradient(180deg, rgba(79, 140, 255, 0.12), rgba(11, 18, 32, 0.95));
+    }
+    .kpi-card .label {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-bottom: 6px;
+    }
+    .kpi-card .value {
+      font-size: 1.12rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .kpi-card .value.positive { color: #4ade80; }
+    .kpi-card .value.negative { color: #f87171; }
+    .date-range-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .date-range-label {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-right: 4px;
+    }
+    .date-range-button {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 12px;
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+    }
+    .date-range-button.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    #visibleDateRange {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .chart-container {
+      position: relative;
+      width: 100%;
+    }
+    .chart-container canvas {
+      width: 100%;
+      height: 100%;
+    }
+    .chart-container.tall { height: 340px; }
+    .chart-container.medium { height: 300px; }
+    .chart-container.small { height: 220px; }
+    .table-wrap {
+      overflow: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 860px;
+    }
+    th, td {
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--panel-border);
+      font-size: 0.94rem;
+      white-space: nowrap;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .empty-state {
+      color: var(--muted);
+      padding: 12px 0;
+    }
+
+    @media (max-width: 900px) {
       body { margin: 16px; }
-      .chart-container { height:260px; }
+      .panel { padding: 16px; }
+      .chart-container.tall { height: 300px; }
+      .chart-container.medium { height: 270px; }
+    }
+
+    @media (max-width: 640px) {
+      h1 { font-size: 1.7rem; }
+      .panel-header { flex-direction: column; }
+      .chart-container.tall { height: 260px; }
+      .chart-container.medium { height: 240px; }
+      .chart-container.small { height: 210px; }
     }
   </style>
 </head>
 <body>
   <h1>Trading Dashboard</h1>
-  <div class="panel" id="status">connecting…</div>
+
+  <div class="panel" id="status">connecting...</div>
 
   <div class="panel">
-    <h2>MA9–MA20 Strategy</h2>
+    <div class="panel-header">
+      <div>
+        <h2>Weekly Contrarian Strategy</h2>
+        <p class="inline-note">Portfolio: selected universe. Price chart: selected stock.</p>
+      </div>
+    </div>
+
     <div class="control-row">
       <div class="control-group">
-        <label for="symbolSelect">Symbol</label>
+        <label for="universeSelect">Universe</label>
+        <select id="universeSelect">
+          <option value="small">Small universe</option>
+          <option value="full">Full universe</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="symbolSelect">Stock inspection</label>
         <select id="symbolSelect"></select>
       </div>
+
       <div class="control-group">
-        <label for="fastWindow">Fast window</label>
-        <input id="fastWindow" type="number" value="9" min="1" />
+        <label for="lookbackDays">Lookback days</label>
+        <input id="lookbackDays" type="number" value="5" min="1" step="1"/>
       </div>
+
       <div class="control-group">
-        <label for="slowWindow">Slow window</label>
-        <input id="slowWindow" type="number" value="20" min="2" />
+        <label for="buyThreshold">Buy threshold (%)</label>
+        <input id="buyThreshold" type="number" value="-5" step="0.1"/>
       </div>
+
       <div class="control-group">
-        <label for="initialCash">Initial cash</label>
-        <input id="initialCash" type="number" value="1000" min="1" step="100" />
+        <label for="sellThreshold">Sell threshold (%)</label>
+        <input id="sellThreshold" type="number" value="10" step="0.1"/>
       </div>
+
       <div class="control-group">
+        <label for="buyNotional">Buy notional (EGP)</label>
+        <input id="buyNotional" type="number" value="5" min="0.01" step="0.5"/>
+      </div>
+
+      <div class="control-group">
+        <label for="sellNotional">Sell notional (EGP)</label>
+        <input id="sellNotional" type="number" value="10" min="0.01" step="0.5"/>
+      </div>
+
+      <div class="control-group">
+        <label for="initialCash">Initial cash (EGP)</label>
+        <input id="initialCash" type="number" value="1000" min="1" step="50"/>
+      </div>
+
+      <div class="control-group">
+        <label for="runBacktestButton">Run backtest</label>
         <button id="runBacktestButton" type="button">Run backtest</button>
       </div>
     </div>
-    <div id="strategyStatus">Select a symbol and run a backtest.</div>
+
+    <div id="strategyStatus" class="muted">Choose a universe and run the weekly contrarian backtest.</div>
   </div>
 
   <div class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>Performance Snapshot</h2>
+        <p class="muted">Primary metrics stay tied to the full backtest, even when the chart range is filtered.</p>
+      </div>
+    </div>
+
     <div class="kpi-grid">
+      <div class="kpi-card primary"><div class="label">Total return</div><div class="value" id="kpiTotalReturn">—</div></div>
+      <div class="kpi-card primary"><div class="label">Sharpe ratio</div><div class="value" id="kpiSharpe">—</div></div>
+      <div class="kpi-card primary"><div class="label">Maximum drawdown</div><div class="value" id="kpiMaxDrawdown">—</div></div>
       <div class="kpi-card"><div class="label">Final portfolio value</div><div class="value" id="kpiFinalValue">—</div></div>
       <div class="kpi-card"><div class="label">Profit / loss</div><div class="value" id="kpiProfitLoss">—</div></div>
-      <div class="kpi-card"><div class="label">Total return</div><div class="value" id="kpiTotalReturn">—</div></div>
-      <div class="kpi-card"><div class="label">Maximum drawdown</div><div class="value" id="kpiMaxDrawdown">—</div></div>
-      <div class="kpi-card"><div class="label">Maximum drawdown %</div><div class="value" id="kpiMaxDrawdownPct">—</div></div>
+      <div class="kpi-card"><div class="label">Benchmark return</div><div class="value" id="kpiBenchmarkReturn">—</div></div>
+      <div class="kpi-card"><div class="label">Excess return</div><div class="value" id="kpiExcessReturn">—</div></div>
       <div class="kpi-card"><div class="label">Buy operations</div><div class="value" id="kpiBuyOperations">—</div></div>
       <div class="kpi-card"><div class="label">Sell operations</div><div class="value" id="kpiSellOperations">—</div></div>
-      <div class="kpi-card"><div class="label">Completed trades</div><div class="value" id="kpiCompletedTrades">—</div></div>
-      <div class="kpi-card"><div class="label">Market exposure</div><div class="value" id="kpiExposure">—</div></div>
-      <div class="kpi-card"><div class="label">Final position</div><div class="value" id="kpiFinalPosition">—</div></div>
-      <div class="kpi-card"><div class="label">Buy-and-hold return</div><div class="value" id="kpiBuyHoldReturn">—</div></div>
-      <div class="kpi-card"><div class="label">Excess return</div><div class="value" id="kpiExcessReturn">—</div></div>
+      <div class="kpi-card"><div class="label">Skipped buys</div><div class="value" id="kpiSkippedBuys">—</div></div>
+      <div class="kpi-card"><div class="label">Open positions</div><div class="value" id="kpiOpenPositions">—</div></div>
     </div>
   </div>
 
@@ -96,36 +302,69 @@
       <button type="button" class="date-range-button active" data-range="ALL">All</button>
     </div>
     <p id="visibleDateRange">Showing all available dates</p>
-    <div class="chart-panel">
-      <div class="chart-container">
-        <canvas id="strategyPriceChart"></canvas>
-      </div>
-    </div>
   </div>
 
-  <div class="panel chart-panel">
-    <div class="chart-container">
-      <canvas id="portfolioChart"></canvas>
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>Equity Curve vs Benchmark</h2>
+        <p class="muted">Normalized portfolio value, starting from 1.0 EGP.</p>
+      </div>
+    </div>
+    <div class="chart-container tall">
+      <canvas id="equityChart"></canvas>
     </div>
   </div>
 
   <div class="panel">
-    <h2>Trade history</h2>
+    <div class="panel-header">
+      <div>
+        <h2>Selected Stock Diagnostics</h2>
+        <p class="muted">Executed trades only for the currently selected stock.</p>
+      </div>
+    </div>
+    <div class="chart-container medium">
+      <canvas id="priceChart"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>Daily Operations</h2>
+        <p class="muted">Buy and sell counts across the whole selected universe.</p>
+      </div>
+    </div>
+    <div class="chart-container small">
+      <canvas id="operationsChart"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>Trade History</h2>
+        <p class="muted">All executed trades for the multi-asset weekly contrarian portfolio.</p>
+      </div>
+    </div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Operation</th>
             <th>Date</th>
+            <th>Symbol</th>
+            <th>Signal return</th>
             <th>Price</th>
+            <th>Notional</th>
             <th>Shares</th>
             <th>Cash after</th>
-            <th>Portfolio after</th>
+            <th>Position after</th>
           </tr>
         </thead>
         <tbody id="tradeTableBody">
           <tr>
-            <td colspan="6" class="empty-state">No backtest loaded yet.</td>
+            <td colspan="9" class="empty-state">Run a backtest to load trades.</td>
           </tr>
         </tbody>
       </table>
