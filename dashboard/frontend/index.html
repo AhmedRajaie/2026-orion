@@ -19,6 +19,31 @@
         body {
             background: #0f172a;
             color: white;
+        
+        .report-summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-top: 18px;
+        }
+        
+        .report-metric {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 14px;
+        }
+        
+        .report-metric span {
+            display: block;
+            color: #94a3b8;
+            font-size: 13px;
+            margin-bottom: 5px;
+        }
+        
+        .report-metric strong {
+            color: #f8fafc;
+            font-size: 20px;
+        }
             padding: 30px;
         }
 
@@ -64,6 +89,60 @@
             border: none;
             font-size: 16px;
             cursor: pointer;
+        }
+
+        .multi-select-panel {
+            background: #1e293b;
+            border-radius: 14px;
+            padding: 20px;
+            margin: 0 0 25px;
+            box-shadow: 0 10px 25px rgba(0,0,0,.35);
+        }
+
+        .multi-select-panel h2 {
+            margin-bottom: 8px;
+        }
+
+        .multi-select-panel p {
+            color: #94a3b8;
+            margin-bottom: 14px;
+        }
+
+        #symbolMultiSelect {
+            width: 100%;
+            min-height: 130px;
+            background: #0f172a;
+            color: white;
+        }
+
+        .dashboard-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 14px;
+            flex-wrap: wrap;
+        }
+
+        .dashboard-actions button {
+            border: 0;
+            border-radius: 8px;
+            padding: 10px 16px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        #applyUniverseFilter {
+            background: #38bdf8;
+            color: #082f49;
+        }
+
+        #selectAllUniverse {
+            background: #334155;
+            color: white;
+        }
+
+        .dashboard-error {
+            color: #fca5a5;
+            margin-top: 10px;
         }
 
         .cards {
@@ -184,6 +263,17 @@
 
     </div>
 
+    <section class="multi-select-panel">
+        <h2>Universe strategy view</h2>
+        <p>Choose the stocks to include in the weekly buy/sell simulation and the two added charts.</p>
+        <select id="symbolMultiSelect" multiple aria-label="Choose stocks for strategy charts"></select>
+        <div class="dashboard-actions">
+            <button id="applyUniverseFilter" type="button">Apply selection</button>
+            <button id="selectAllUniverse" type="button">Select all</button>
+        </div>
+        <div id="dashboardError" class="dashboard-error" role="alert"></div>
+    </section>
+
     <div class="cards">
 
         <div class="card">
@@ -252,6 +342,39 @@
 
         <canvas id="equityChart"></canvas>
 
+    </div>
+
+    <div class="chart-panel">
+        <h2>Selected stocks — weekly closing prices</h2>
+        <canvas id="universeChart"></canvas>
+    </div>
+
+    <div class="chart-panel">
+        <h2>Weekly strategy vs benchmark</h2>
+        <canvas id="strategyChart"></canvas>
+        <div class="report-summary" aria-label="Filtered strategy report">
+            <div class="report-metric"><span>Strategy return</span><strong id="weeklyReturn">--</strong></div>
+            <div class="report-metric"><span>Max drawdown</span><strong id="weeklyDrawdown">--</strong></div>
+            <div class="report-metric"><span>SMA 9/20 return</span><strong id="smaReturn">--</strong></div>
+            <div class="report-metric"><span>SMA max drawdown</span><strong id="smaDrawdown">--</strong></div>
+            <div class="report-metric"><span>Equal-weight return</span><strong id="benchmarkReturn">--</strong></div>
+            <div class="report-metric"><span>EGX30 return</span><strong id="egx30Return">--</strong></div>
+        </div>
+    </div>
+
+    <div class="chart-panel">
+        <h2>SMA 9/20 strategy vs equal-weight benchmark</h2>
+        <canvas id="smaChart"></canvas>
+    </div>
+
+    <div class="chart-panel">
+        <h2>Weekly strategy vs equal-weight vs real EGX30</h2>
+        <canvas id="egx30Chart"></canvas>
+    </div>
+
+    <div class="chart-panel">
+        <h2>Drawdown of the filtered strategy</h2>
+        <canvas id="drawdownChart"></canvas>
     </div>
 
     <script src="app.js"></script>

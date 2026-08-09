@@ -6,6 +6,7 @@ FastAPI app that serves data to the frontend. Imports `tradinglab`.
 - `GET /universe` -> list of symbols
 - `GET /prices/{symbol}` -> [{date, open, high, low, close, volume}]
 - `GET /backtest/{strategy}` -> {dates, portfolio, benchmark}
+- `GET /weekly-strategy?symbols=COMI&symbols=TMGH` -> weekly prices, portfolio, benchmark, drawdown, and weights for the selected symbols
 
 ## Run
 `uv run uvicorn dashboard.backend.main:app --reload --port 8000`

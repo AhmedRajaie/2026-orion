@@ -5,6 +5,7 @@ Plain JS (or your framework of choice) fetching from the backend on localhost.
 ## Panels
 1. Price chart with indicator overlay (uses /prices)
 2. Equity curve: your strategy vs EGX30 (uses /backtest)
+3. Filtered universe chart and weekly buy/sell strategy report (uses /weekly-strategy)
 
 ## Grows over the program
 - Week 1: price + equity curve
