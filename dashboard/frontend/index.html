@@ -19,8 +19,15 @@
     <select id="symbolSelect" style="width:100%;margin-top:12px;padding:8px;border-radius:8px;border:1px solid #334155;background:#090f1a;color:#e6edf3;"></select>
   </div>
   <div class="panel" id="metrics">
-    <strong>Backtest summary</strong>
+    <strong>Base strategy summary</strong>
     <div id="metricsContent" style="margin-top:8px;color:#cbd5e1;">No backtest run yet</div>
+  </div>
+  <div class="panel" id="strategyPerformance">
+    <strong>Strategy comparison</strong>
+    <div id="strategyMetricsContent" style="margin-top:8px;color:#cbd5e1;">No strategy results yet</div>
+    <div style="margin-top:16px;">
+      <canvas id="strategyChart" width="800" height="300" style="width:100%;height:320px;"></canvas>
+    </div>
   </div>
   <div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
     <div>

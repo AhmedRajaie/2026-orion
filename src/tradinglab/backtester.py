@@ -1,21 +1,5 @@
 """
-backtester.py — WEEK 1 face of the simulator.
-
-A strategy is any function: observation -> weights. The backtester just loops
-over history, asks the strategy for weights each day, and hands them to the
-simulator. No gym, no RL vocabulary. A beginner reads this top to bottom.
-
-In week 3 the very same simulator is wrapped by PortfolioEnv instead. Same core,
-different caller. Open both files side by side on pivot day.
-"""
-
-from __future__ import annotations
-
-from typing import Callable
-
-import numpy as np
-
-from .observation import build_observation
+ build_observation
 from .simulator import PortfolioSimulator
 
 # A strategy takes one day's observation and returns weights over the universe.
@@ -41,4 +25,20 @@ def run_backtest(
 
     result = sim.run(weights_by_day, start, end)
     result["weights"] = weights_by_day[start:end]   # (T, n_assets) — what was actually held each day
-    return result
+    return resultbacktester.py — WEEK 1 face of the simulator.
+
+A strategy is any function: observation -> weights. The backtester just loops
+over history, asks the strategy for weights each day, and hands them to the
+simulator. No gym, no RL vocabulary. A beginner reads this top to bottom.
+
+In week 3 the very same simulator is wrapped by PortfolioEnv instead. Same core,
+different caller. Open both files side by side on pivot day.
+"""
+
+from __future__ import annotations
+
+from typing import Callable
+
+import numpy as np
+
+from .observation import

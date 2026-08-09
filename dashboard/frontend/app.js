@@ -53,9 +53,10 @@ async function drawPriceChartFor(symbol, smaWindow = 20) {
     }
 
     updateMetrics(back);
+    renderStrategyComparison(back);
     // store latest backtest globally for export and rendering
     window.latestBacktest = back;
-    renderTrades((back && back.trades) || []);
+    renderTrades((back && back.base && back.base.trades) || []);
 
     const el = document.getElementById('priceChart');
     if (!el) return;
@@ -102,7 +103,7 @@ async function drawPriceChartFor(symbol, smaWindow = 20) {
     }
 
     // add equity curve on right axis if backtest present
-    if (back && back.equity) {
+    if (back && back.base && back.base.equity) {
       // enable export button
       const exportBtn = document.getElementById('exportCsvBtn');
       if (exportBtn) {
@@ -111,7 +112,7 @@ async function drawPriceChartFor(symbol, smaWindow = 20) {
       }
       datasets.push({
         label: 'Equity (EGP)',
-        data: back.equity,
+        data: back.base.equity,
         borderColor: '#60a5fa',
         backgroundColor: 'rgba(96,165,250,0.06)',
         pointRadius: 0,
@@ -123,7 +124,7 @@ async function drawPriceChartFor(symbol, smaWindow = 20) {
       // buy/sell markers as separate datasets (nulls except trade points)
       const buys = new Array(data.dates.length).fill(null);
       const sells = new Array(data.dates.length).fill(null);
-      (back.trades || []).forEach((tr) => {
+      (back.base && back.base.trades ? back.base.trades : []).forEach((tr) => {
         const i = tr.index;
         if (tr.type === 'buy') buys[i] = tr.price;
         if (tr.type === 'sell') sells[i] = tr.price;
@@ -177,17 +178,18 @@ async function drawPriceChartFor(symbol, smaWindow = 20) {
 function updateMetrics(back) {
   const el = document.getElementById('metricsContent');
   if (!el) return;
-  if (!back) {
+  if (!back || !back.base) {
     el.textContent = 'No backtest data';
     return;
   }
-  const final = Number(back.final_value || 0);
-  const total = Number(back.total_return || 0);
-  const ann = Number(back.annualized_return || 0);
-  const sharpe = Number(back.sharpe_ratio || 0);
-  const mdd = Number(back.max_drawdown_pct || 0);
-  const buys = back.buys || 0;
-  const sells = back.sells || 0;
+  const base = back.base;
+  const final = Number(base.final_value || 0);
+  const total = Number(base.total_return || 0);
+  const ann = Number(base.annualized_return || 0);
+  const sharpe = Number(base.sharpe_ratio || 0);
+  const mdd = Number(base.max_drawdown_pct || 0);
+  const buys = base.buys || 0;
+  const sells = base.sells || 0;
 
   el.innerHTML = `
     <div>Final equity: <strong>${final.toFixed(2)}</strong> EGP</div>
@@ -197,6 +199,83 @@ function updateMetrics(back) {
     <div>Max drawdown: <strong>${(mdd * 100).toFixed(2)}%</strong></div>
     <div>Buys: <strong>${buys}</strong> &nbsp; Sells: <strong>${sells}</strong></div>
   `;
+}
+
+function renderStrategyComparison(back) {
+  const el = document.getElementById('strategyMetricsContent');
+  if (!el) return;
+  if (!back || !back.base || !back.new_strategy) {
+    el.textContent = 'No strategy comparison data available.';
+    return;
+  }
+
+  const base = back.base;
+  const other = back.new_strategy;
+  el.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:18px;">
+      <div style="flex:1;min-width:240px;padding:12px;border-radius:10px;background:#0f172a;">
+        <strong>Base SMA crossover</strong>
+        <div style="margin-top:8px;line-height:1.6;">
+          <div>Total return: <strong>${(Number(base.total_return || 0) * 100).toFixed(2)}%</strong></div>
+          <div>Sharpe: <strong>${Number(base.sharpe_ratio || 0).toFixed(2)}</strong></div>
+          <div>Max drawdown: <strong>${(Number(base.max_drawdown_pct || 0) * 100).toFixed(2)}%</strong></div>
+          <div>Buys: <strong>${base.buys || 0}</strong> Sells: <strong>${base.sells || 0}</strong></div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:240px;padding:12px;border-radius:10px;background:#0f172a;">
+        <strong>Drop/rise strategy</strong>
+        <div style="margin-top:8px;line-height:1.6;">
+          <div>Total return: <strong>${(Number(other.total_return || 0) * 100).toFixed(2)}%</strong></div>
+          <div>Sharpe: <strong>${Number(other.sharpe_ratio || 0).toFixed(2)}</strong></div>
+          <div>Max drawdown: <strong>${(Number(other.max_drawdown_pct || 0) * 100).toFixed(2)}%</strong></div>
+          <div>Buys: <strong>${other.buys || 0}</strong> Sells: <strong>${other.sells || 0}</strong></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const chartEl = document.getElementById('strategyChart');
+  if (!chartEl) return;
+  const ctx = chartEl.getContext('2d');
+  if (window.strategyChartInstance) window.strategyChartInstance.destroy();
+
+  window.strategyChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: back.dates,
+      datasets: [
+        {
+          label: 'SMA crossover equity',
+          data: base.equity,
+          borderColor: '#60a5fa',
+          backgroundColor: 'rgba(96,165,250,0.08)',
+          pointRadius: 0,
+          borderWidth: 2,
+          tension: 0.15,
+        },
+        {
+          label: 'Drop/rise strategy equity',
+          data: other.equity,
+          borderColor: '#f97316',
+          backgroundColor: 'rgba(249,115,22,0.08)',
+          pointRadius: 0,
+          borderWidth: 2,
+          tension: 0.15,
+          borderDash: [6, 4],
+        }
+      ]
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: '#cbd5e1' } },
+        y: { ticks: { color: '#cbd5e1' }, grid: { color: 'rgba(148,163,184,0.16)' } }
+      },
+      plugins: {
+        legend: { labels: { color: '#cbd5e1' } }
+      },
+      maintainAspectRatio: false,
+    }
+  });
 }
 
 function renderSymbolControls(symbols, selectedSymbol) {
@@ -281,7 +360,7 @@ function exportBacktestCSV(back) {
   rows.push(['date','price','sma9','sma20','equity','trade_type','trade_shares','trade_price','trade_cash']);
   // map trades by index (allow multiple per day)
   const tradesByIndex = {};
-  (back.trades || []).forEach((t) => {
+  (back.base && back.base.trades ? back.base.trades : []).forEach((t) => {
     if (!tradesByIndex[t.index]) tradesByIndex[t.index] = [];
     tradesByIndex[t.index].push(t);
   });
@@ -291,7 +370,7 @@ function exportBacktestCSV(back) {
     const price = back.price && back.price[i] != null ? back.price[i] : '';
     const sma9 = back.sma9 && back.sma9[i] != null ? back.sma9[i] : '';
     const sma20 = back.sma20 && back.sma20[i] != null ? back.sma20[i] : '';
-    const equity = back.equity && back.equity[i] != null ? back.equity[i] : '';
+    const equity = back.base && back.base.equity && back.base.equity[i] != null ? back.base.equity[i] : '';
     const trades = tradesByIndex[i] || [];
     if (trades.length === 0) {
       rows.push([date, price, sma9, sma20, equity, '', '', '', '']);

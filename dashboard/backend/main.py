@@ -13,6 +13,7 @@ if str(src_path) not in sys.path:
 
 from tradinglab.data_feed import DataFeed
 from tradinglab.indicators import sma
+from tradinglab import metrics as metrics_module
 import numpy as np
 
 app = FastAPI(title="Younit-style trading dashboard")
@@ -57,25 +58,23 @@ def indicators(symbol: str, window: int = 20):
     return {"dates": dates, "sma": sma_list}
 
 
-@app.get("/backtest/{symbol}")
-def backtest(symbol: str, initial: float = 1000.0):
-    """Simple walk-forward backtest:
-    - Buy (go long) when SMA(9) > SMA(20)
-    - Sell (go to cash) when SMA(9) < SMA(20)
-    - Fractional shares allowed, no costs/slippage
-    Returns dates, price, sma9, sma20, equity series, trades and summary metrics.
-    """
-    if symbol not in feed.symbols:
-        raise HTTPException(status_code=404, detail="symbol not found")
-    idx = feed.symbols.index(symbol)
-    prices = feed.close[:, idx].astype(float)
-    dates = [d.strftime("%Y-%m-%d") for d in feed.dates]
+def _performance_metrics_from_equity(equity, initial):
+    eq_arr = np.array(equity, dtype=float)
+    returns = eq_arr[1:] / eq_arr[:-1] - 1.0 if len(eq_arr) > 1 else np.array([])
+    total_return = metrics_module.total_return(returns) if len(returns) > 0 else 0.0
+    annualized_return = metrics_module.annualized_return(returns) if len(returns) > 0 else 0.0
+    return {
+        "final_value": float(eq_arr[-1]) if eq_arr.size else float(initial),
+        "total_return": float(total_return),
+        "annualized_return": float(annualized_return),
+        "sharpe_ratio": float(metrics_module.sharpe(returns)) if len(returns) > 0 else 0.0,
+        "max_drawdown_pct": float(metrics_module.max_drawdown(returns)) if len(returns) > 0 else 0.0,
+    }
 
-    # compute SMAs
+
+def _run_sma_backtest(prices, dates, initial):
     sma9 = sma(prices, 9)
     sma20 = sma(prices, 20)
-
-    # positions: 1 if sma9 > sma20 and both not NaN, else 0
     pos = np.zeros_like(prices, dtype=int)
     valid = ~np.isnan(sma9) & ~np.isnan(sma20)
     pos[valid] = (sma9[valid] > sma20[valid]).astype(int)
@@ -86,14 +85,12 @@ def backtest(symbol: str, initial: float = 1000.0):
     trades = []
     buys = 0
     sells = 0
-
     prev_pos = 0
+
     for t in range(len(prices)):
         price = float(prices[t])
         cur_pos = int(pos[t])
-        # entry
         if prev_pos == 0 and cur_pos == 1:
-            # buy at close
             if price > 0 and cash > 0:
                 shares = cash / price
                 cash = 0.0
@@ -106,9 +103,7 @@ def backtest(symbol: str, initial: float = 1000.0):
                     "shares": shares,
                     "cash": cash,
                 })
-        # exit
         elif prev_pos == 1 and cur_pos == 0:
-            # sell at close
             if shares > 0:
                 cash = shares * price
                 shares = 0.0
@@ -121,53 +116,111 @@ def backtest(symbol: str, initial: float = 1000.0):
                     "shares": 0.0,
                     "cash": cash,
                 })
-        # record equity
-        eq = cash + shares * price
-        equity.append(eq)
+        equity.append(cash + shares * price)
         prev_pos = cur_pos
 
-    # summary
-    final_value = equity[-1] if equity else float(initial)
-    eq_arr = np.array(equity, dtype=float)
-    running_max = np.maximum.accumulate(eq_arr)
-    drawdowns = running_max - eq_arr
-    max_drawdown_abs = float(np.nanmax(drawdowns)) if drawdowns.size else 0.0
-    max_drawdown_pct = float(np.nanmax(drawdowns / running_max)) if drawdowns.size else 0.0
+    metrics = _performance_metrics_from_equity(equity, initial)
+    metrics.update({"buys": buys, "sells": sells, "equity": [float(x) for x in equity], "trades": trades})
+    return metrics, sma9, sma20
 
-    # performance metrics
-    total_return = (float(final_value) / float(initial)) - 1.0
-    T = len(eq_arr)
-    # daily returns of equity
-    if T > 1:
-        daily_rets = eq_arr[1:] / eq_arr[:-1] - 1.0
-        mean_ret = float(np.nanmean(daily_rets))
-        std_ret = float(np.nanstd(daily_rets))
-        ann_factor = 252.0
-        sharpe_ratio = float((mean_ret / std_ret) * np.sqrt(ann_factor)) if std_ret > 0 else 0.0
-        years = T / ann_factor
-        annualized_return = float((float(final_value) / float(initial)) ** (1.0 / years) - 1.0) if years > 0 else float(total_return)
-    else:
-        daily_rets = np.array([])
-        mean_ret = 0.0
-        std_ret = 0.0
-        sharpe_ratio = 0.0
-        annualized_return = 0.0
+
+def _run_drop_rise_backtest(prices, dates, initial, buy_threshold=0.05, sell_threshold=0.10):
+    cash = float(initial)
+    shares = 0.0
+    equity = [float(initial)]
+    trades = []
+    buys = 0
+    sells = 0
+
+    for t in range(1, len(prices)):
+        prev_price = float(prices[t - 1])
+        price = float(prices[t])
+        change = (price / prev_price - 1.0) if prev_price > 0 else 0.0
+        portfolio_value = cash + shares * price
+        if change <= -buy_threshold and portfolio_value > 0:
+            amount = min(cash, abs(change) * portfolio_value)
+            if amount > 0 and price > 0:
+                share_qty = amount / price
+                shares += share_qty
+                cash -= amount
+                buys += 1
+                trades.append({
+                    "index": t,
+                    "date": dates[t],
+                    "type": "buy",
+                    "price": price,
+                    "shares": share_qty,
+                    "cash": cash,
+                })
+        elif change >= sell_threshold and shares > 0:
+            amount = min(shares * price, change * portfolio_value)
+            if amount > 0 and price > 0:
+                share_qty = amount / price
+                shares -= share_qty
+                cash += amount
+                sells += 1
+                trades.append({
+                    "index": t,
+                    "date": dates[t],
+                    "type": "sell",
+                    "price": price,
+                    "shares": share_qty,
+                    "cash": cash,
+                })
+        equity.append(cash + shares * price)
+
+    metrics = _performance_metrics_from_equity(equity, initial)
+    metrics.update({"buys": buys, "sells": sells, "equity": [float(x) for x in equity], "trades": trades})
+    return metrics
+
+
+@app.get("/backtest/{symbol}")
+def backtest(symbol: str, initial: float = 1000.0):
+    """Simple per-symbol backtest of two strategies.
+    - Base SMA crossover strategy from notebook 4
+    - Drop/rise strategy: buy on >5% drop, sell on >10% rise
+    Returns prices, SMA lines, and both strategy performance summaries.
+    """
+    if symbol not in feed.symbols:
+        raise HTTPException(status_code=404, detail="symbol not found")
+    idx = feed.symbols.index(symbol)
+    prices = feed.close[:, idx].astype(float)
+    dates = [d.strftime("%Y-%m-%d") for d in feed.dates]
+
+    base_metrics, sma9, sma20 = _run_sma_backtest(prices, dates, initial)
+    new_metrics = _run_drop_rise_backtest(prices, dates, initial)
 
     return {
         "dates": dates,
         "price": prices.tolist(),
         "sma9": [None if np.isnan(x) else float(x) for x in sma9],
         "sma20": [None if np.isnan(x) else float(x) for x in sma20],
-        "equity": eq_arr.tolist(),
-        "trades": trades,
-        "final_value": float(final_value),
-        "total_return": float(total_return),
-        "annualized_return": float(annualized_return),
-        "sharpe_ratio": float(sharpe_ratio),
-        "max_drawdown_abs": max_drawdown_abs,
-        "max_drawdown_pct": max_drawdown_pct,
-        "buys": buys,
-        "sells": sells,
+        "base": base_metrics,
+        "new_strategy": new_metrics,
+    }
+
+
+@app.get("/metrics/{symbol}")
+def metrics(symbol: str, initial: float = 1000.0):
+    if symbol not in feed.symbols:
+        raise HTTPException(status_code=404, detail="symbol not found")
+    idx = feed.symbols.index(symbol)
+    prices = feed.close[:, idx].astype(float)
+    dates = [d.strftime("%Y-%m-%d") for d in feed.dates]
+    base_metrics, _, _ = _run_sma_backtest(prices, dates, initial)
+    new_metrics = _run_drop_rise_backtest(prices, dates, initial)
+    return {
+        "symbol": symbol,
+        "base": {
+            "total_return": base_metrics["total_return"],
+            "sharpe_ratio": base_metrics["sharpe_ratio"],
+            "max_drawdown_pct": base_metrics["max_drawdown_pct"],
+        },
+        "new_strategy": {
+            "total_return": new_metrics["total_return"],
+            "sharpe_ratio": new_metrics["sharpe_ratio"],
+            "max_drawdown_pct": new_metrics["max_drawdown_pct"],
+        },
     }
 
 # TASK_02+ : add /universe, /prices/{symbol}, /indicators, /backtest here.

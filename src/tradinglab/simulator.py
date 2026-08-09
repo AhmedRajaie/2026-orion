@@ -43,7 +43,8 @@ class PortfolioSimulator:
         benchmark: str = "equal_weight",
         benchmark_returns: np.ndarray | None = None,
         egx30_path: str | None = None,
-        commission: float = 0.0,
+        commission: float = 0.005
+,
     ):
         """
         benchmark: which built-in benchmark to use — "equal_weight" (default,
