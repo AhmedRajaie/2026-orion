@@ -7,7 +7,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from .strategy_service import list_assets, run_ma_crossover_backtest, to_jsonable
+from .strategy_service import (
+    list_assets,
+    run_ma_crossover_backtest,
+    run_weekly_mean_reversion_backtest,
+    to_jsonable,
+)
 
 app = FastAPI(title="EGX Strategy Lab")
 app.add_middleware(
@@ -67,3 +72,34 @@ def backtest(request: BacktestRequest) -> dict:
         raise HTTPException(status_code=500, detail="Backtest failed") from exc
 
     return to_jsonable(result)
+
+
+@app.get("/api/strategy-performance")
+def strategy_performance(
+    symbol: str,
+    initial_cash: float = 1000.0,
+    fast_window: int = 9,
+    slow_window: int = 20,
+) -> dict:
+    if fast_window >= slow_window:
+        raise HTTPException(status_code=400, detail="fast_window must be smaller than slow_window")
+
+    try:
+        ma_result = run_ma_crossover_backtest(
+            symbol=symbol.upper(),
+            initial_cash=initial_cash,
+            fast_window=fast_window,
+            slow_window=slow_window,
+        )
+        weekly_result = run_weekly_mean_reversion_backtest(initial_cash=initial_cash)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"No data found for symbol {symbol}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Strategy performance computation failed") from exc
+
+    return to_jsonable({
+        "ma_crossover": ma_result,
+        "weekly_mean_reversion": weekly_result,
+    })

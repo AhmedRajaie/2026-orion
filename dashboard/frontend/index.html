@@ -151,6 +151,41 @@
           </table>
         </div>
       </article>
+
+      <article id="strategyPerformancePanel" class="panel summary-card" hidden>
+        <div class="panel__header panel__header--tight">
+          <div>
+            <h3>Strategy Performance</h3>
+            <p>Compare the MA crossover strategy with the weekly mean reversion universe strategy.</p>
+          </div>
+        </div>
+        <div id="strategyPerformanceSummary" class="summary-list"></div>
+        <div id="strategyPerformanceBadges" class="pill-row"></div>
+      </article>
+
+      <article id="strategyComparisonChartPanel" class="panel chart-panel chart-panel--wide" hidden>
+        <div class="panel__header">
+          <div>
+            <h3>Strategy Equity Curves</h3>
+            <p>Portfolio value for each strategy over time.</p>
+          </div>
+        </div>
+        <div class="chart-wrap chart-wrap--wide">
+          <canvas id="strategyComparisonChart"></canvas>
+        </div>
+      </article>
+
+      <article id="strategyMetricsChartPanel" class="panel chart-panel" hidden>
+        <div class="panel__header">
+          <div>
+            <h3>Performance Metrics</h3>
+            <p>Return, drawdown, and trade activity across strategies.</p>
+          </div>
+        </div>
+        <div class="chart-wrap chart-wrap--compact">
+          <canvas id="strategyMetricsChart"></canvas>
+        </div>
+      </article>
     </section>
 
     <section id="emptyState" class="empty-state">

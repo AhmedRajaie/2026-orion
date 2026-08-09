@@ -3,6 +3,7 @@ const API = "http://localhost:8000";
 const state = {
   assets: [],
   results: null,
+  strategyPerformance: null,
   theme: "dark",
   charts: {},
 };
@@ -14,6 +15,13 @@ const els = {
   initialCash: document.getElementById("initialCash"),
   fastWindow: document.getElementById("fastWindow"),
   slowWindow: document.getElementById("slowWindow"),
+  strategyPerformancePanel: document.getElementById("strategyPerformancePanel"),
+  strategyPerformanceSummary: document.getElementById("strategyPerformanceSummary"),
+  strategyPerformanceBadges: document.getElementById("strategyPerformanceBadges"),
+  strategyComparisonChartPanel: document.getElementById("strategyComparisonChartPanel"),
+  strategyMetricsChartPanel: document.getElementById("strategyMetricsChartPanel"),
+  strategyComparisonChart: document.getElementById("strategyComparisonChart"),
+  strategyMetricsChart: document.getElementById("strategyMetricsChart"),
   runBtn: document.getElementById("runBtn"),
   resetBtn: document.getElementById("resetBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
@@ -91,7 +99,7 @@ function validateInputs() {
     return false;
   }
   if (fastWindow >= slowWindow) {
-    setBanner("Fast MA must be smaller than Fast MA.", "error");
+    setBanner("Fast MA must be smaller than Slow MA.", "error");
     return false;
   }
   return true;
@@ -108,16 +116,31 @@ async function runBacktest() {
       fast_window: Number(els.fastWindow.value),
       slow_window: Number(els.slowWindow.value),
     };
-    const r = await fetch(`${API}/backtest`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const result = await r.json();
-    if (!r.ok) throw new Error(result.detail || "Backtest failed");
-    state.results = result;
-    renderResults(result);
-    setBanner(`Backtest complete for ${result.symbol}.`, "success");
+
+    const [backtestRes, performanceRes] = await Promise.all([
+      fetch(`${API}/backtest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+      fetch(
+        `${API}/api/strategy-performance?symbol=${encodeURIComponent(payload.symbol)}&initial_cash=${encodeURIComponent(
+          payload.initial_cash,
+        )}&fast_window=${encodeURIComponent(payload.fast_window)}&slow_window=${encodeURIComponent(payload.slow_window)}`,
+      ),
+    ]);
+
+    const backtestResult = await backtestRes.json();
+    const strategyPerformance = await performanceRes.json();
+
+    if (!backtestRes.ok) throw new Error(backtestResult.detail || "Backtest failed");
+    if (!performanceRes.ok) throw new Error(strategyPerformance.detail || "Strategy performance failed");
+
+    state.results = backtestResult;
+    state.strategyPerformance = strategyPerformance;
+    renderResults(backtestResult);
+    renderStrategyPerformance(strategyPerformance, backtestResult);
+    setBanner(`Backtest complete for ${backtestResult.symbol}.`, "success");
   } catch (e) {
     setBanner(e.message || "Backtest failed.", "error");
   } finally {
@@ -179,6 +202,15 @@ function renderSummary(result) {
 function destroyCharts() {
   Object.values(state.charts).forEach((chart) => chart.destroy());
   state.charts = {};
+}
+
+function destroyStrategyCharts() {
+  ["strategyComparison", "strategyMetrics"].forEach((key) => {
+    if (state.charts[key]) {
+      state.charts[key].destroy();
+      delete state.charts[key];
+    }
+  });
 }
 
 function buildTooltipLabel(context) {
@@ -341,6 +373,98 @@ function renderResults(result) {
   renderTrades(result);
 }
 
+function renderStrategyPerformance(performance, baseResult) {
+  const ma = performance.ma_crossover;
+  const weekly = performance.weekly_mean_reversion;
+  const comparisonLabels = ma.dates.length <= weekly.dates.length ? ma.dates : weekly.dates;
+
+  els.strategyPerformancePanel.hidden = false;
+  els.strategyComparisonChartPanel.hidden = false;
+  els.strategyMetricsChartPanel.hidden = false;
+
+  els.strategyPerformanceSummary.innerHTML = [
+    `MA crossover strategy run on ${ma.symbol} with fast=${ma.fast_window} and slow=${ma.slow_window}.`,
+    `Weekly mean reversion strategy run across the full EGX universe.`,
+    `Selected cash base: ${fmtCurrency(ma.initial_cash)}.`,
+    `MA crossover return: ${fmtPercent(ma.return_percent)} vs weekly return: ${fmtPercent(weekly.return_percent)}.`,
+  ].map((line) => `<div>${line}</div>`).join("");
+
+  els.strategyPerformanceBadges.innerHTML = `
+    <span class="pill">MA return ${fmtPercent(ma.return_percent)}</span>
+    <span class="pill">Weekly return ${fmtPercent(weekly.return_percent)}</span>
+    <span class="pill">MA drawdown ${fmtPercent(ma.max_drawdown_percent)}</span>
+    <span class="pill">Weekly drawdown ${fmtPercent(weekly.max_drawdown_percent)}</span>
+  `;
+
+  destroyStrategyCharts();
+
+  state.charts.strategyComparison = new Chart(els.strategyComparisonChart.getContext("2d"), {
+    type: "line",
+    data: {
+      labels: comparisonLabels,
+      datasets: [
+        {
+          label: "MA Crossover",
+          data: ma.portfolio_values.slice(0, comparisonLabels.length),
+          borderColor: "#6f7dff",
+          backgroundColor: "rgba(111,125,255,0.16)",
+          borderWidth: 2,
+          tension: 0.35,
+          pointRadius: 0,
+        },
+        {
+          label: "Weekly Mean Reversion",
+          data: weekly.portfolio_values.slice(0, comparisonLabels.length),
+          borderColor: "#35d7a8",
+          backgroundColor: "rgba(53,215,168,0.16)",
+          borderWidth: 2,
+          tension: 0.35,
+          pointRadius: 0,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { labels: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
+      },
+      scales: {
+        x: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
+        y: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
+      },
+    },
+  });
+
+  state.charts.strategyMetrics = new Chart(els.strategyMetricsChart.getContext("2d"), {
+    type: "bar",
+    data: {
+      labels: ["Return %", "Max Drawdown %", "Trades"],
+      datasets: [
+        {
+          label: "MA Crossover",
+          data: [ma.return_percent, ma.max_drawdown_percent, ma.total_operations],
+          backgroundColor: "rgba(111,125,255,0.7)",
+        },
+        {
+          label: "Weekly Mean Reversion",
+          data: [weekly.return_percent, weekly.max_drawdown_percent, weekly.trade_count],
+          backgroundColor: "rgba(53,215,168,0.7)",
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
+        y: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
+      },
+    },
+  });
+}
+
 function resetForm() {
   els.assetSelect.value = state.assets[0] || "";
   els.initialCash.value = "1000";
@@ -350,8 +474,12 @@ function resetForm() {
   els.tradeFilter.value = "ALL";
   els.tradeSort.value = "newest";
   state.results = null;
+  state.strategyPerformance = null;
   els.resultsSection.hidden = true;
   els.emptyState.hidden = false;
+  els.strategyPerformancePanel.hidden = true;
+  els.strategyComparisonChartPanel.hidden = true;
+  els.strategyMetricsChartPanel.hidden = true;
   els.kpiRow.innerHTML = "";
   destroyCharts();
 }
