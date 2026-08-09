@@ -6,9 +6,17 @@ uv run uvicorn dashboard.backend.main:app --reload --port 8000
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+from tradinglab.backtester import run_backtest
+from tradinglab.data_feed import DataFeed
+from tradinglab.metrics import max_drawdown, sharpe, total_return
+from tradinglab.observation import build_observation
+from tradinglab.simulator import PortfolioSimulator
+from tradinglab.strategies.mean_reversion import weekly_loser_weights
 
 app = FastAPI(title="Younit-style trading dashboard")
 
@@ -20,7 +28,10 @@ app.add_middleware(
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = REPO_ROOT / "data" / "egx"
 DATA_FILE = REPO_ROOT / "data" / "egx" / "SAUD.csv"
+
+
 def get_asset_file(symbol: str) -> Path:
     symbol = symbol.upper()
 
@@ -37,7 +48,6 @@ def get_asset_file(symbol: str) -> Path:
         )
 
     return available_files[symbol]
-DATA_DIR = REPO_ROOT / "data" / "egx"
 
 
 @app.get("/health")
@@ -275,4 +285,122 @@ def backtest(symbol: str):
         "equity_curve": equity_df.round(4).to_dict(
             orient="records"
         ),
+    }
+
+
+@app.get("/portfolio/mean-reversion")
+def mean_reversion_portfolio():
+    """Run the five-day loser strategy across the complete EGX universe."""
+    initial_cash = 1000.0
+    commission = 0.005
+    lookback = 30
+    signal_days = 5
+
+    feed = DataFeed.from_dir(DATA_DIR)
+    strategy = lambda observation: weekly_loser_weights(
+        observation,
+        lookback_days=signal_days,
+    )
+
+    result = run_backtest(
+        PortfolioSimulator(feed, commission=commission),
+        strategy,
+        lookback=lookback,
+    )
+    result_no_cost = run_backtest(
+        PortfolioSimulator(feed, commission=0.0),
+        strategy,
+        lookback=lookback,
+    )
+
+    portfolio = np.asarray(result["portfolio"], dtype=float) * initial_cash
+    no_cost_portfolio = (
+        np.asarray(result_no_cost["portfolio"], dtype=float) * initial_cash
+    )
+    benchmark = np.asarray(result["benchmark"], dtype=float) * initial_cash
+    running_peak = np.maximum.accumulate(portfolio)
+    drawdown_percent = (portfolio - running_peak) / running_peak * 100
+
+    weights = np.asarray(result["weights"], dtype=float)
+    weight_changes = np.diff(weights, axis=0, prepend=weights[:1])
+    daily_turnover = np.abs(weight_changes).sum(axis=1) / 2
+    trade_threshold = 1e-6
+    total_trades = int((np.abs(weight_changes) > trade_threshold).sum())
+    average_assets_held = float(
+        (weights > trade_threshold).sum(axis=1).mean()
+    )
+
+    decision_day = feed.n_days - 2
+    latest_observation = build_observation(feed, decision_day, lookback)
+    recent_returns = latest_observation[:, -signal_days:, 0]
+    five_day_returns = np.prod(1.0 + recent_returns, axis=1) - 1.0
+    latest_weights = strategy(latest_observation)
+
+    allocations = [
+        {
+            "symbol": symbol,
+            "five_day_return_percent": round(float(period_return * 100), 4),
+            "weight_percent": round(float(weight * 100), 4),
+            "amount_egp": round(float(weight * initial_cash), 2),
+        }
+        for symbol, period_return, weight in zip(
+            feed.symbols,
+            five_day_returns,
+            latest_weights,
+        )
+        if weight > trade_threshold
+    ]
+    allocations.sort(key=lambda row: row["weight_percent"], reverse=True)
+
+    dates = [pd.Timestamp(date).strftime("%Y-%m-%d") for date in result["dates"]]
+    equity_curve = [
+        {
+            "date": date,
+            "portfolio_value": round(float(value), 2),
+            "no_cost_value": round(float(no_cost_value), 2),
+            "benchmark_value": round(float(benchmark_value), 2),
+            "running_peak": round(float(peak), 2),
+            "drawdown_percent": round(float(drawdown), 4),
+        }
+        for date, value, no_cost_value, benchmark_value, peak, drawdown in zip(
+            dates,
+            portfolio,
+            no_cost_portfolio,
+            benchmark,
+            running_peak,
+            drawdown_percent,
+        )
+    ]
+
+    final_value = float(portfolio[-1])
+    final_no_cost_value = float(no_cost_portfolio[-1])
+    benchmark_final_value = float(benchmark[-1])
+    portfolio_returns = np.asarray(result["portfolio_returns"], dtype=float)
+
+    return {
+        "strategy": "Five-day loser mean reversion",
+        "description": (
+            "Buy five-day losers in proportion to their decline; recent winners "
+            "receive zero weight because the simulator is long-only."
+        ),
+        "universe_size": feed.n_assets,
+        "signal_days": signal_days,
+        "commission_percent": commission * 100,
+        "initial_cash_egp": initial_cash,
+        "final_portfolio_value_egp": round(final_value, 2),
+        "no_cost_final_value_egp": round(final_no_cost_value, 2),
+        "benchmark_final_value_egp": round(benchmark_final_value, 2),
+        "commission_drag_egp": round(final_no_cost_value - final_value, 2),
+        "total_return_percent": round(total_return(portfolio_returns) * 100, 2),
+        "max_drawdown_egp": round(float(np.max(running_peak - portfolio)), 2),
+        "max_drawdown_percent": round(max_drawdown(portfolio_returns) * 100, 2),
+        "sharpe": round(sharpe(portfolio_returns), 3),
+        "total_trades": total_trades,
+        "average_assets_held": round(average_assets_held, 1),
+        "average_daily_turnover_percent": round(float(daily_turnover.mean() * 100), 2),
+        "latest_decision_date": pd.Timestamp(feed.dates[decision_day]).strftime(
+            "%Y-%m-%d"
+        ),
+        "latest_allocations": allocations,
+        "equity_curve": equity_curve,
     }

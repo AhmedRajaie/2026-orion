@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
-  <title>MA Crossover Lab</title>
+  <title>EGX Strategy Lab</title>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
@@ -77,7 +77,8 @@
       font-size: 0.85rem;
     }
 
-    #asset-select {
+    #asset-select,
+    #strategy-select {
       min-width: 150px;
       padding: 10px 38px 10px 14px;
       color: var(--text);
@@ -88,12 +89,14 @@
       cursor: pointer;
     }
 
-    #asset-select:focus {
+    #asset-select:focus,
+    #strategy-select:focus {
       outline: 2px solid var(--blue);
       outline-offset: 2px;
     }
 
-    #asset-select:disabled {
+    #asset-select:disabled,
+    #strategy-select:disabled {
       cursor: wait;
       opacity: 0.65;
     }
@@ -118,7 +121,7 @@
 
     .cards {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 16px;
       margin-bottom: 20px;
     }
@@ -144,6 +147,28 @@
     .card .value {
       font-size: 1.65rem;
       font-weight: 700;
+    }
+
+    .card .note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .insight {
+      margin-bottom: 20px;
+      padding: 16px 18px;
+      color: #cfe2ff;
+      background: rgba(96, 165, 250, 0.1);
+      border: 1px solid rgba(96, 165, 250, 0.35);
+      border-radius: 14px;
+      line-height: 1.55;
     }
 
     .panel {
@@ -235,6 +260,11 @@
       #asset-select {
         width: 100%;
       }
+
+      .control-group,
+      #strategy-select {
+        width: 100%;
+      }
     }
   </style>
 </head>
@@ -243,25 +273,40 @@
   <main class="container">
     <header class="header">
       <div>
-        <h1>MA Crossover Lab</h1>
+        <h1>EGX Strategy Lab</h1>
 
         <p id="asset-description">
-          Select an asset · SMA 9/20 · Starting capital: 1,000 EGP
+          Explore single-asset trends and an all-market mean-reversion portfolio.
         </p>
       </div>
 
       <div class="header-actions">
-        <label for="asset-select">Asset</label>
+        <div class="control-group">
+          <label for="strategy-select">Strategy</label>
 
-        <select id="asset-select" disabled>
-          <option value="">Loading assets…</option>
-        </select>
+          <select id="strategy-select">
+            <option value="sma">SMA 9/20 · single asset</option>
+            <option value="mean-reversion">5-day mean reversion · 34 assets</option>
+          </select>
+        </div>
+
+        <div class="control-group" id="asset-control">
+          <label for="asset-select">Asset</label>
+
+          <select id="asset-select" disabled>
+            <option value="">Loading assets…</option>
+          </select>
+        </div>
 
         <div class="status" id="status">
           Connecting…
         </div>
       </div>
     </header>
+
+    <section class="insight" id="insight-banner">
+      Loading strategy data…
+    </section>
 
     <section class="cards">
       <article class="card">
@@ -280,13 +325,26 @@
       </article>
 
       <article class="card">
-        <div class="label">Buy / sell operations</div>
+        <div class="label" id="operations-label">Buy / sell operations</div>
         <div class="value" id="operations">—</div>
+        <div class="note" id="operations-note"></div>
+      </article>
+
+      <article class="card">
+        <div class="label" id="comparison-label">Benchmark</div>
+        <div class="value" id="comparison-value">—</div>
+        <div class="note" id="comparison-note"></div>
+      </article>
+
+      <article class="card">
+        <div class="label" id="cost-label">Commission impact</div>
+        <div class="value" id="cost-value">—</div>
+        <div class="note" id="cost-note"></div>
       </article>
     </section>
 
     <section class="panel">
-      <h2>Price and moving averages</h2>
+      <h2 id="primary-chart-title">Price and moving averages</h2>
 
       <div class="chart-container">
         <canvas id="price-chart"></canvas>
@@ -294,7 +352,7 @@
     </section>
 
     <section class="panel">
-      <h2>Portfolio equity curve</h2>
+      <h2 id="equity-chart-title">Portfolio equity curve</h2>
 
       <div class="chart-container small">
         <canvas id="equity-chart"></canvas>
@@ -302,7 +360,7 @@
     </section>
 
     <section class="panel">
-      <h2>Portfolio drawdown</h2>
+      <h2 id="drawdown-chart-title">Portfolio drawdown</h2>
 
       <div class="chart-container small">
         <canvas id="drawdown-chart"></canvas>
@@ -310,11 +368,11 @@
     </section>
 
     <section class="panel">
-      <h2>Trade history</h2>
+      <h2 id="table-title">Trade history</h2>
 
       <div class="table-wrapper">
         <table>
-          <thead>
+          <thead id="table-head">
             <tr>
               <th>Operation</th>
               <th>Signal date</th>
@@ -337,6 +395,6 @@
     </section>
   </main>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>
