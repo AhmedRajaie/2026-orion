@@ -35,6 +35,7 @@ def run_ma_crossover_backtest(
     fast_window: int = 9,
     slow_window: int = 20,
     initial_cash: float = 1000.0,
+    commission: float = 0.0,
 ) -> BacktestResult:
     close = np.asarray(close, dtype=float)
     if len(close) < slow_window:
@@ -51,15 +52,17 @@ def run_ma_crossover_backtest(
 
     trades: list[TradeEvent] = []
     prev_weight = 0.0
+    turnovers = np.zeros_like(weights)
     for t, weight in enumerate(weights):
         if prev_weight == 0.0 and weight == 1.0:
             trades.append(TradeEvent(date=str(dates[t])[:10], side="buy", price=float(close[t])))
         elif prev_weight == 1.0 and weight == 0.0:
             trades.append(TradeEvent(date=str(dates[t])[:10], side="sell", price=float(close[t])))
+        turnovers[t] = abs(weight - prev_weight)
         prev_weight = weight
 
     returns = close[1:] / close[:-1] - 1.0
-    strategy_returns = weights[:-1] * returns
+    strategy_returns = weights[:-1] * returns - commission * turnovers[:-1]
     equity_curve = (initial_cash * np.cumprod(1.0 + strategy_returns)).tolist()
 
     peak = np.maximum.accumulate(equity_curve)
@@ -72,6 +75,65 @@ def run_ma_crossover_backtest(
         equity_curve=equity_curve,
         trades=trades,
         final_value=float(equity_curve[-1]) if equity_curve else float(initial_cash),
+        max_drawdown_pct=max_drawdown_pct,
+        max_drawdown_value=max_drawdown_value,
+        num_buys=sum(1 for t in trades if t.side == "buy"),
+        num_sells=sum(1 for t in trades if t.side == "sell"),
+    )
+    return result
+
+
+def run_drop_rise_backtest(
+    dates,
+    close,
+    initial_cash: float = 1000.0,
+    buy_threshold: float = -0.05,
+    sell_threshold: float = 0.10,
+    commission: float = 0.0,
+) -> BacktestResult:
+    close = np.asarray(close, dtype=float)
+    if len(close) < 2:
+        raise ValueError("Not enough history to run the drop/rise strategy")
+
+    returns = close[1:] / close[:-1] - 1.0
+    equity = float(initial_cash)
+    equities: list[float] = []
+    trades: list[TradeEvent] = []
+    current_weight = 0.0
+
+    for t in range(1, len(close)):
+        equity = float(equity * (1.0 + current_weight * returns[t - 1]))
+
+        if returns[t - 1] <= buy_threshold:
+            new_weight = min(current_weight + abs(returns[t - 1]), 1.0)
+            turnover = abs(new_weight - current_weight)
+            current_weight = new_weight
+            equity = float(equity * max(0.0, 1.0 - commission * turnover))
+            trades.append(
+                TradeEvent(date=str(dates[t])[:10], side="buy", price=float(close[t]))
+            )
+        elif returns[t - 1] >= sell_threshold:
+            new_weight = max(current_weight - returns[t - 1], 0.0)
+            turnover = abs(new_weight - current_weight)
+            current_weight = new_weight
+            equity = float(equity * max(0.0, 1.0 - commission * turnover))
+            trades.append(
+                TradeEvent(date=str(dates[t])[:10], side="sell", price=float(close[t]))
+            )
+
+        equities.append(equity)
+
+    strategy_returns = np.diff(np.asarray(equities)) / np.asarray(equities)[:-1]
+    peak = np.maximum.accumulate(np.asarray(equities))
+    drawdowns = peak - np.asarray(equities)
+    max_drawdown_value = float(np.max(drawdowns)) if len(drawdowns) else 0.0
+    max_drawdown_pct = max_drawdown(strategy_returns)
+
+    result = BacktestResult(
+        dates=[str(d)[:10] for d in dates[1:]],
+        equity_curve=equities,
+        trades=trades,
+        final_value=float(equities[-1]) if equities else float(initial_cash),
         max_drawdown_pct=max_drawdown_pct,
         max_drawdown_value=max_drawdown_value,
         num_buys=sum(1 for t in trades if t.side == "buy"),
