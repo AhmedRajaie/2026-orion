@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // Dashboard frontend for the EGX Strategy Lab.
 const API = "http://localhost:8000";
 const state = {
@@ -54,11 +55,16 @@ function setTheme(theme) {
 function setLoading(isLoading) {
   els.runBtn.disabled = isLoading;
 }
+=======
+// Dashboard frontend. Grows via dashboard/tasks/.
+const API = "http://localhost:8000";
+>>>>>>> origin/main
 
 async function checkHealth() {
   try {
     const r = await fetch(`${API}/health`);
     const j = await r.json();
+<<<<<<< HEAD
     els.backendBadge.textContent = `backend: ${j.status}`;
     els.backendBadge.className = "badge good";
     setBanner("Backend ready. Select an asset and run a backtest.");
@@ -532,3 +538,12 @@ async function init() {
 }
 
 init();
+=======
+    document.getElementById("status").textContent = "backend: " + j.status;
+  } catch (e) {
+    document.getElementById("status").textContent = "backend not reachable — start uvicorn";
+  }
+}
+checkHealth();
+// TASK_02+ : fetch /prices and render a chart, etc.
+>>>>>>> origin/main

@@ -1,6 +1,7 @@
 """FastAPI backend for the dashboard. Grows via dashboard/tasks/.
 Run: uv run uvicorn dashboard.backend.main:app --reload --port 8000
 """
+<<<<<<< HEAD
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
@@ -103,3 +104,17 @@ def strategy_performance(
         "ma_crossover": ma_result,
         "weekly_mean_reversion": weekly_result,
     })
+=======
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI(title="Younit-style trading dashboard")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+# TASK_02+ : add /universe, /prices/{symbol}, /indicators, /backtest here.
+>>>>>>> origin/main
