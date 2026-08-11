@@ -3,6 +3,7 @@ let priceChartInstance = null;
 let portfolioChartInstance = null;
 let drawdownChartInstance = null;
 let simulationChartInstance = null;
+let tiktok06ChartInstance = null;
 
 async function initDashboard() {
   setStatus("Loading stock list...");
@@ -49,7 +50,11 @@ async function loadSymbol(symbol) {
   setStatus(`Loading ${symbol}...`);
 
   try {
-    const [data, simulationData] = await Promise.all([fetchSymbolData(symbol), fetchSimulations(symbol)]);
+    const [data, simulationData, tiktok06Data] = await Promise.all([
+      fetchSymbolData(symbol),
+      fetchSimulations(symbol),
+      fetchTikTok06(),
+    ]);
     const mergedData = {
       ...data,
       dates: simulationData?.dates || data.dates,
@@ -70,6 +75,8 @@ async function loadSymbol(symbol) {
     createDrawdownChart(mergedData);
     createSimulationChart(mergedData);
     renderSimulationTable(mergedData.simulations || []);
+    createTikTok06Chart(tiktok06Data);
+    renderTikTok06Table(tiktok06Data);
     setStatus(`Connected — ${symbol}`);
   } catch (error) {
     console.error(error);
@@ -93,6 +100,15 @@ async function fetchSimulations(symbol) {
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Simulation request failed: ${response.status} ${errorText}`);
+  }
+  return await response.json();
+}
+
+async function fetchTikTok06() {
+  const response = await fetch(`${API_BASE}/production/tiktok-06`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`TikTok 06 request failed: ${response.status} ${errorText}`);
   }
   return await response.json();
 }
@@ -194,6 +210,10 @@ function clearCharts() {
   if (simulationChartInstance) {
     simulationChartInstance.destroy();
     simulationChartInstance = null;
+  }
+  if (tiktok06ChartInstance) {
+    tiktok06ChartInstance.destroy();
+    tiktok06ChartInstance = null;
   }
 }
 
@@ -440,6 +460,49 @@ function renderSimulationTable(simulations) {
 
   table.appendChild(thead);
   table.appendChild(tbody);
+}
+
+function createTikTok06Chart(data) {
+  if (!data) return;
+  if (tiktok06ChartInstance) tiktok06ChartInstance.destroy();
+
+  tiktok06ChartInstance = new Chart(document.getElementById("tiktok06Chart"), {
+    type: "line",
+    data: {
+      labels: data.dates,
+      datasets: [
+        { label: "TikTok 06", data: data.portfolio_value, borderColor: "#a855f7", tension: 0.2, pointRadius: 0, borderWidth: 2 },
+        { label: "Equal Weight", data: data.equal_weight, borderColor: "#fbbf24", borderDash: [6, 4], tension: 0.2, pointRadius: 0, borderWidth: 1.5 },
+        { label: "EGX30", data: data.egx30, borderColor: "#38bdf8", borderDash: [2, 4], tension: 0.2, pointRadius: 0, borderWidth: 1.5 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { color: "#cbd5e1" } }, tooltip: { mode: "index", intersect: false } },
+      scales: {
+        x: { ticks: { color: "#cbd5e1", maxTicksLimit: 8 }, grid: { color: "rgba(148, 163, 184, 0.12)" } },
+        y: { ticks: { color: "#cbd5e1" }, grid: { color: "rgba(148, 163, 184, 0.12)" } },
+      },
+    },
+  });
+}
+
+function renderTikTok06Table(data) {
+  const table = document.getElementById("tiktok06Table");
+  if (!table || !data?.metrics) return;
+  const metrics = data.metrics;
+  table.innerHTML = `
+    <thead><tr><th>Strategy</th><th>Final Value</th><th>Total Return</th><th>Max Drawdown</th><th>Sharpe</th></tr></thead>
+    <tbody><tr>
+      <td>${data.name}</td>
+      <td>${formatMetric(metrics.final_portfolio_value, "currency")}</td>
+      <td>${formatMetric(metrics.total_return_pct, "percent")}</td>
+      <td>${formatMetric(metrics.max_drawdown_pct, "percent")}</td>
+      <td>${formatMetric(metrics.sharpe_ratio, "number")}</td>
+    </tr></tbody>`;
 }
 
 initDashboard();

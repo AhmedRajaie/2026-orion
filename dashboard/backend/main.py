@@ -1,6 +1,8 @@
 ﻿from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
+from functools import lru_cache
+import sys
 import pandas as pd
 import numpy as np
 
@@ -18,7 +20,11 @@ app.add_middleware(
 )
 
 DATA_FOLDER = Path(__file__).resolve().parents[2] / "data" / "egx"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SYMBOL = "ADIB"
+
+if str(PROJECT_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 
 @app.get("/health")
@@ -228,3 +234,71 @@ def simulations(symbol: str = DEFAULT_SYMBOL):
         )
 
     return {"symbol": symbol.upper(), "dates": dates, "simulations": payload}
+
+
+@lru_cache(maxsize=1)
+def _tiktok_06_backtest():
+    """Run the real Week 1 / 06 strategy on the full EGX universe once."""
+    from tradinglab.data_feed import DataFeed
+    from tradinglab.simulator import PortfolioSimulator
+    from tradinglab.backtester import run_backtest
+
+    commission = 0.005
+    week_days = 5
+    sensitivity = 1.0
+    state = {"weights": None, "day_count": 0}
+
+    def strategy(observation):
+        n_assets = observation.shape[0]
+        current = state["weights"]
+        if current is None or current.sum() == 0:
+            current = np.ones(n_assets) / n_assets
+            state["weights"] = current
+
+        if state["day_count"] % week_days == 0:
+            daily_returns = observation[:, -week_days:, 0]
+            weekly_return = np.prod(1 + daily_returns, axis=1) - 1
+            next_weights = np.clip(current * (1 - weekly_return * sensitivity), 0, None)
+            total = next_weights.sum()
+            current = np.zeros(n_assets) if total <= 0 else next_weights / total
+            state["weights"] = current
+
+        state["day_count"] += 1
+        return state["weights"]
+
+    feed = DataFeed.from_dir(DATA_FOLDER)
+    tiktok = run_backtest(
+        PortfolioSimulator(feed, benchmark="equal_weight", commission=commission),
+        strategy,
+        lookback=30,
+    )
+    egx30 = run_backtest(
+        PortfolioSimulator(feed, benchmark="egx30", commission=commission),
+        strategy=lambda observation: np.ones(observation.shape[0]) / observation.shape[0],
+        lookback=30,
+    )
+
+    start_cash = 1000.0
+    tiktok_values = tiktok["portfolio"] * start_cash
+    equal_values = tiktok["benchmark"] * start_cash
+    egx30_values = egx30["benchmark"] * start_cash
+    metrics = _summarize_series(tiktok_values, start_cash)
+
+    return {
+        "name": "TikTok 06 Strategy",
+        "dates": [str(date.date()) for date in tiktok["dates"]],
+        "portfolio_value": [float(value) for value in tiktok_values],
+        "equal_weight": [float(value) for value in equal_values],
+        "egx30": [float(value) for value in egx30_values],
+        "metrics": {
+            "final_portfolio_value": metrics["final_portfolio_value"],
+            "total_return_pct": metrics["total_return_pct"],
+            "max_drawdown_pct": metrics["max_drawdown_pct"],
+            "sharpe_ratio": metrics["sharpe_ratio"],
+        },
+    }
+
+
+@app.get("/production/tiktok-06")
+def production_tiktok_06():
+    return _tiktok_06_backtest()
