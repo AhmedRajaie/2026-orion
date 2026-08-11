@@ -6,19 +6,24 @@ let commissionValue = 0.0;
 let apiBase = null;
 
 async function checkHealth() {
+  const statusEl = document.getElementById("status");
   for (const api of API_CANDIDATES) {
     try {
       const r = await fetch(`${api}/health`);
       if (!r.ok) continue;
       const j = await r.json();
-      document.getElementById("status").textContent = "backend: " + j.status;
+      if (statusEl) {
+        statusEl.textContent = "backend: " + j.status;
+      }
       return api;
     } catch (e) {
       // Try the next local backend URL.
     }
   }
 
-  document.getElementById("status").textContent = "backend not reachable — start uvicorn";
+  if (statusEl) {
+    statusEl.textContent = "backend not reachable — start uvicorn";
+  }
   return null;
 }
 
@@ -28,6 +33,7 @@ function getSelectedSymbols() {
 
 function renderSymbolList(symbols) {
   const list = document.getElementById("symbolList");
+  if (!list) return;
   list.innerHTML = "";
 
   symbols.forEach((symbol) => {
@@ -62,11 +68,14 @@ function updateStatsPanel(backtest) {
 }
 
 async function renderEquityChart(backtest) {
+  const canvas = document.getElementById("equityChart");
+  if (!canvas) return;
+
   if (equityChart) {
     equityChart.destroy();
   }
 
-  const ctx = document.getElementById("equityChart").getContext("2d");
+  const ctx = canvas.getContext("2d");
   equityChart = new Chart(ctx, {
     type: "line",
     data: {
@@ -146,8 +155,11 @@ async function renderMetrics(metrics) {
 async function renderDashboardForSymbols() {
   if (!apiBase) return;
   selectedSymbols = getSelectedSymbols();
+  const statusEl = document.getElementById("status");
   if (!selectedSymbols.length) {
-    document.getElementById("status").textContent = "Select at least one symbol.";
+    if (statusEl) {
+      statusEl.textContent = "Select at least one symbol.";
+    }
     return;
   }
 
@@ -183,7 +195,10 @@ async function loadDashboard() {
     if (chip) chip.classList.add("selected");
   });
 
-  document.getElementById("updateButton").onclick = renderDashboardForSymbols;
+  const updateButton = document.getElementById("updateButton");
+  if (updateButton) {
+    updateButton.onclick = renderDashboardForSymbols;
+  }
   await renderDashboardForSymbols();
 }
 

@@ -35,6 +35,11 @@ def root():
     return FileResponse(FRONTEND_DIR / "index.html")
 
 
+@app.get("/app.js")
+def app_js():
+    return FileResponse(FRONTEND_DIR / "app.js")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
