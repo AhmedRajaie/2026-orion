@@ -22,3 +22,18 @@ Starting frontend server on http://localhost:8080 ...
 livereload not available -> falling back to simple HTTP server
 Frontend started, log: /Users/sandra/2026-orion/logs/frontend.log
 Dev servers started. Open http://localhost:8080 in your browser.
+Backend already running (PID=717)
+Frontend already running (PID=779)
+Dev servers started. Open http://localhost:8080 in your browser.
+Starting backend (uvicorn)...
+Backend started, log: /Users/sandra/2026-orion/logs/backend.log
+Starting frontend server on http://localhost:8080 ...
+livereload not available -> falling back to simple HTTP server
+Frontend started, log: /Users/sandra/2026-orion/logs/frontend.log
+Dev servers started. Open http://localhost:8080 in your browser.
+Starting backend (uvicorn)...
+Backend started, log: /Users/sandra/2026-orion/logs/backend.log
+Starting frontend server on http://localhost:8080 ...
+livereload not available -> falling back to simple HTTP server
+Frontend started, log: /Users/sandra/2026-orion/logs/frontend.log
+Dev servers started. Open http://localhost:8080 in your browser.
