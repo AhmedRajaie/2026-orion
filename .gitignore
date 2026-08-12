@@ -7,3 +7,4 @@ models/
 *.zip
 .DS_Store
 .vscode/
+.env
