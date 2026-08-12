@@ -1,5 +1,18 @@
 // Dashboard frontend for the weekly contrarian strategy.
 const API = "http://localhost:8000";
+const WEEKLY_CONTRARIAN_STRATEGY_ID = "weekly_contrarian";
+const BEST_NEURAL_STRATEGY_ID = "best_neural";
+const DEFAULT_TRADE_COLUMNS = [
+  { key: "operation", label: "Operation" },
+  { key: "date", label: "Date" },
+  { key: "symbol", label: "Symbol" },
+  { key: "signal_return", label: "Signal return" },
+  { key: "price", label: "Price" },
+  { key: "notional", label: "Notional" },
+  { key: "shares", label: "Shares" },
+  { key: "cash_after", label: "Cash after" },
+  { key: "position_after", label: "Position after" },
+];
 
 let equityChart = null;
 let priceChart = null;
@@ -7,8 +20,10 @@ let operationsChart = null;
 let initializationStarted = false;
 let activeRequestToken = 0;
 let selectedUniverse = "small";
+let selectedStrategy = WEEKLY_CONTRARIAN_STRATEGY_ID;
 let currentBacktestData = null;
 let selectedDateRange = "ALL";
+let currentTradeColumns = DEFAULT_TRADE_COLUMNS;
 
 function setStatusMessage(message) {
   const statusElement = document.getElementById("status");
@@ -24,8 +39,81 @@ function setStrategyStatus(message) {
   }
 }
 
-function defaultStrategyStatus() {
+function isNeuralStrategySelected() {
+  return selectedStrategy === BEST_NEURAL_STRATEGY_ID;
+}
+
+function getStrategyDisplayName() {
+  return isNeuralStrategySelected()
+    ? "Best Neural Strategy"
+    : "Weekly Contrarian Strategy";
+}
+
+function getStrategyPanelNote() {
+  if (isNeuralStrategySelected()) {
+    return "Precomputed Week 2 Day 3 neural portfolio on the full course universe.";
+  }
   return "Portfolio: selected universe. Price chart: selected stock.";
+}
+
+function defaultStrategyStatus() {
+  if (isNeuralStrategySelected()) {
+    return "Portfolio: full universe. Price chart: selected stock diagnostics.";
+  }
+  return "Portfolio: selected universe. Price chart: selected stock.";
+}
+
+function setTradeColumns(columns) {
+  currentTradeColumns = Array.isArray(columns) && columns.length
+    ? columns
+    : DEFAULT_TRADE_COLUMNS;
+
+  const headerRow = document.getElementById("tradeTableHeaderRow");
+  if (!headerRow) {
+    return;
+  }
+
+  headerRow.replaceChildren();
+  currentTradeColumns.forEach((column) => {
+    const th = document.createElement("th");
+    th.textContent = column.label;
+    headerRow.appendChild(th);
+  });
+}
+
+function updateStrategyControlState() {
+  const title = document.getElementById("strategyPanelTitle");
+  const note = document.getElementById("strategyPanelNote");
+  const universeSelect = document.getElementById("universeSelect");
+  const strategySelect = document.getElementById("strategySelect");
+  const runButton = document.getElementById("runBacktestButton");
+  const contrarianControls = document.querySelectorAll(".contrarian-only");
+
+  if (strategySelect) {
+    strategySelect.value = selectedStrategy;
+  }
+  if (title) {
+    title.textContent = getStrategyDisplayName();
+  }
+  if (note) {
+    note.textContent = getStrategyPanelNote();
+  }
+  if (runButton) {
+    runButton.textContent = isNeuralStrategySelected() ? "Load strategy" : "Run backtest";
+  }
+
+  contrarianControls.forEach((element) => {
+    element.hidden = isNeuralStrategySelected();
+  });
+
+  if (universeSelect) {
+    universeSelect.disabled = isNeuralStrategySelected();
+    if (isNeuralStrategySelected()) {
+      universeSelect.value = "full";
+    } else {
+      universeSelect.value = selectedUniverse;
+    }
+  }
 }
 
 function destroyChart(chartInstance) {
@@ -63,7 +151,7 @@ function clearKpiValues() {
     if (!element) {
       return;
     }
-    element.textContent = "—";
+    element.textContent = "â€”";
     element.classList.remove("positive", "negative");
   });
 }
@@ -77,7 +165,7 @@ function showEmptyTradeTable(message) {
   tbody.replaceChildren();
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 9;
+  cell.colSpan = currentTradeColumns.length;
   cell.className = "empty-state";
   cell.textContent = message;
   row.appendChild(cell);
@@ -88,6 +176,7 @@ function clearDashboardResults(message) {
   currentBacktestData = null;
   destroyAllCharts();
   clearKpiValues();
+  setTradeColumns(DEFAULT_TRADE_COLUMNS);
   updateVisibleDateRangeLabel();
   showEmptyTradeTable(message);
 }
@@ -263,7 +352,7 @@ function addChartCanvasEvents() {
 function formatEGP(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return "—";
+    return "â€”";
   }
   return `${numeric.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EGP`;
 }
@@ -271,7 +360,7 @@ function formatEGP(value) {
 function formatPercentDecimal(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return "—";
+    return "â€”";
   }
   return `${(numeric * 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 }
@@ -279,7 +368,7 @@ function formatPercentDecimal(value) {
 function formatRatio(value, digits = 3) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return "—";
+    return "â€”";
   }
   return numeric.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
@@ -287,7 +376,7 @@ function formatRatio(value, digits = 3) {
 function formatCount(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return "—";
+    return "â€”";
   }
   return Math.round(numeric).toLocaleString();
 }
@@ -295,9 +384,26 @@ function formatCount(value) {
 function formatShares(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    return "—";
+    return "â€”";
   }
   return numeric.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 6 });
+}
+
+function formatTradeValue(key, value) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+
+  if (["signal_return", "predicted_return", "actual_return", "previous_weight", "new_weight", "weight_change"].includes(key)) {
+    return formatPercentDecimal(value);
+  }
+  if (["price", "notional", "cash_after", "close"].includes(key)) {
+    return formatEGP(value);
+  }
+  if (["shares", "position_after"].includes(key)) {
+    return formatShares(value);
+  }
+  return String(value);
 }
 
 function setValueClass(element, state) {
@@ -397,7 +503,7 @@ function renderEquityChart(data) {
       labels: Array.isArray(viewData.dates) ? viewData.dates : [],
       datasets: [
         {
-          label: "Weekly contrarian strategy",
+          label: data.strategy && data.strategy.name ? data.strategy.name : "Strategy",
           data: Array.isArray(viewData.portfolio) ? viewData.portfolio : [],
           borderColor: "#4f8cff",
           backgroundColor: "rgba(79, 140, 255, 0.18)",
@@ -406,7 +512,7 @@ function renderEquityChart(data) {
           tension: 0.18,
         },
         {
-          label: "Equal-weight buy and hold",
+          label: data.benchmark_name || "Benchmark",
           data: Array.isArray(viewData.benchmark) ? viewData.benchmark : [],
           borderColor: "#f59e0b",
           backgroundColor: "rgba(245, 158, 11, 0.16)",
@@ -423,7 +529,7 @@ function renderEquityChart(data) {
         legend: { display: true },
         title: {
           display: true,
-          text: "Equity curve vs benchmark",
+          text: `${data.strategy && data.strategy.name ? data.strategy.name : "Strategy"} vs benchmark`,
         },
       },
       scales: {
@@ -467,7 +573,7 @@ function renderPriceChart(data) {
           spanGaps: false,
         },
         {
-          label: "Executed buys",
+          label: asset.buy_label || "Exposure increases",
           data: Array.isArray(asset.buy_markers) ? asset.buy_markers : [],
           showLine: false,
           pointStyle: "triangle",
@@ -480,7 +586,7 @@ function renderPriceChart(data) {
           spanGaps: false,
         },
         {
-          label: "Executed sells",
+          label: asset.sell_label || "Exposure decreases",
           data: Array.isArray(asset.sell_markers) ? asset.sell_markers : [],
           showLine: false,
           pointStyle: "triangle",
@@ -502,7 +608,7 @@ function renderPriceChart(data) {
         legend: { display: true },
         title: {
           display: true,
-          text: `${data.selected_symbol} — executed weekly contrarian trades`,
+          text: `${data.selected_symbol} - strategy diagnostics`,
         },
       },
       scales: {
@@ -535,14 +641,14 @@ function renderOperationsChart(data) {
       labels: Array.isArray(viewData.dates) ? viewData.dates : [],
       datasets: [
         {
-          label: "Daily buys",
+          label: data.strategy_id === BEST_NEURAL_STRATEGY_ID ? "Daily weight increases" : "Daily buys",
           data: Array.isArray(viewData.daily_buy_operations) ? viewData.daily_buy_operations : [],
           backgroundColor: "rgba(34, 197, 94, 0.7)",
           borderColor: "#22c55e",
           borderWidth: 1,
         },
         {
-          label: "Daily sells",
+          label: data.strategy_id === BEST_NEURAL_STRATEGY_ID ? "Daily weight decreases" : "Daily sells",
           data: Array.isArray(viewData.daily_sell_operations) ? viewData.daily_sell_operations : [],
           backgroundColor: "rgba(239, 68, 68, 0.7)",
           borderColor: "#ef4444",
@@ -557,7 +663,7 @@ function renderOperationsChart(data) {
         legend: { display: true },
         title: {
           display: true,
-          text: "Daily buy and sell operations",
+          text: data.strategy_id === BEST_NEURAL_STRATEGY_ID ? "Daily position changes" : "Daily buy and sell operations",
         },
       },
       scales: {
@@ -593,21 +699,9 @@ function renderTradeTable(trades) {
 
   trades.forEach((trade) => {
     const row = document.createElement("tr");
-    const values = [
-      trade.operation || "—",
-      trade.date || "—",
-      trade.symbol || "—",
-      formatPercentDecimal(trade.signal_return),
-      formatEGP(trade.price),
-      formatEGP(trade.notional),
-      formatShares(trade.shares),
-      formatEGP(trade.cash_after),
-      formatShares(trade.position_after),
-    ];
-
-    values.forEach((value) => {
+    currentTradeColumns.forEach((column) => {
       const cell = document.createElement("td");
-      cell.textContent = value;
+      cell.textContent = formatTradeValue(column.key, trade[column.key]);
       row.appendChild(cell);
     });
 
@@ -640,7 +734,7 @@ async function checkHealth() {
     return true;
   } catch (error) {
     console.error(error);
-    setStatusMessage("backend not reachable — start uvicorn");
+    setStatusMessage("backend not reachable â€” start uvicorn");
     return false;
   }
 }
@@ -699,6 +793,19 @@ function getStrategyParameters() {
   if (!symbol) {
     throw new Error("Please select a stock for the diagnostic chart.");
   }
+  if (!Number.isFinite(initialCash) || initialCash <= 0) {
+    throw new Error("Initial cash must be greater than zero.");
+  }
+
+  if (isNeuralStrategySelected()) {
+    return {
+      strategy: selectedStrategy,
+      universe: "full",
+      symbol,
+      initial_cash: initialCash,
+    };
+  }
+
   if (!Number.isFinite(lookbackDays) || lookbackDays < 1) {
     throw new Error("Lookback days must be at least 1.");
   }
@@ -714,11 +821,9 @@ function getStrategyParameters() {
   if (!Number.isFinite(sellNotional) || sellNotional <= 0) {
     throw new Error("Sell notional must be greater than zero.");
   }
-  if (!Number.isFinite(initialCash) || initialCash <= 0) {
-    throw new Error("Initial cash must be greater than zero.");
-  }
 
   return {
+    strategy: selectedStrategy,
     universe: selectedUniverse,
     symbol,
     lookback_days: lookbackDays,
@@ -732,15 +837,19 @@ function getStrategyParameters() {
 
 function buildBacktestUrl(parameters) {
   const query = new URLSearchParams({
+    strategy: parameters.strategy,
     universe: parameters.universe,
     symbol: parameters.symbol,
-    lookback_days: String(parameters.lookback_days),
-    buy_threshold: String(parameters.buy_threshold),
-    sell_threshold: String(parameters.sell_threshold),
-    buy_notional: String(parameters.buy_notional),
-    sell_notional: String(parameters.sell_notional),
     initial_cash: String(parameters.initial_cash),
   });
+
+  if (!isNeuralStrategySelected()) {
+    query.set("lookback_days", String(parameters.lookback_days));
+    query.set("buy_threshold", String(parameters.buy_threshold));
+    query.set("sell_threshold", String(parameters.sell_threshold));
+    query.set("buy_notional", String(parameters.buy_notional));
+    query.set("sell_notional", String(parameters.sell_notional));
+  }
   return `${API}/backtest?${query.toString()}`;
 }
 
@@ -760,8 +869,11 @@ async function runBacktest() {
     runButton.disabled = true;
   }
 
-  clearDashboardResults("Running weekly contrarian backtest...");
-  setStrategyStatus("Running weekly contrarian backtest...");
+  const loadingMessage = isNeuralStrategySelected()
+    ? "Loading precomputed neural strategy..."
+    : "Running weekly contrarian backtest...";
+  clearDashboardResults(loadingMessage);
+  setStrategyStatus(loadingMessage);
 
   try {
     const payload = await fetchJson(
@@ -774,6 +886,8 @@ async function runBacktest() {
     }
 
     currentBacktestData = payload;
+    selectedUniverse = payload.universe || selectedUniverse;
+    setTradeColumns(payload.trade_columns || DEFAULT_TRADE_COLUMNS);
     updateVisibleDateRangeLabel();
     renderKpis(payload.metrics || {}, payload.parameters || {});
     renderEquityChart(payload);
@@ -801,7 +915,7 @@ async function runBacktest() {
 async function handleUniverseChange() {
   const universeSelect = document.getElementById("universeSelect");
   const nextUniverse = universeSelect ? universeSelect.value : "small";
-  selectedUniverse = nextUniverse;
+  selectedUniverse = isNeuralStrategySelected() ? "full" : nextUniverse;
 
   try {
     setStrategyStatus("Loading the selected universe...");
@@ -814,13 +928,39 @@ async function handleUniverseChange() {
   }
 }
 
+async function handleStrategyChange() {
+  const strategySelect = document.getElementById("strategySelect");
+  const symbolSelect = document.getElementById("symbolSelect");
+  selectedStrategy = strategySelect ? strategySelect.value : WEEKLY_CONTRARIAN_STRATEGY_ID;
+  if (isNeuralStrategySelected()) {
+    selectedUniverse = "full";
+  }
+
+  updateStrategyControlState();
+
+  try {
+    setStrategyStatus(`Loading ${getStrategyDisplayName()}...`);
+    const preferredSymbol = symbolSelect ? symbolSelect.value : undefined;
+    await loadUniverse(selectedUniverse, preferredSymbol);
+    await runBacktest();
+  } catch (error) {
+    console.error(error);
+    clearDashboardResults("Run a backtest to load trades.");
+    setStrategyStatus(error.message || "Unable to change strategy.");
+  }
+}
+
 function attachEventListeners() {
   const runButton = document.getElementById("runBacktestButton");
+  const strategySelect = document.getElementById("strategySelect");
   const universeSelect = document.getElementById("universeSelect");
   const symbolSelect = document.getElementById("symbolSelect");
 
   if (runButton) {
     runButton.addEventListener("click", runBacktest);
+  }
+  if (strategySelect) {
+    strategySelect.addEventListener("change", handleStrategyChange);
   }
   if (universeSelect) {
     universeSelect.addEventListener("change", handleUniverseChange);
@@ -837,6 +977,8 @@ async function initializeDashboard() {
   initializationStarted = true;
 
   setDateRangeSelection("ALL");
+  updateStrategyControlState();
+  setTradeColumns(DEFAULT_TRADE_COLUMNS);
   setStrategyStatus(defaultStrategyStatus());
   attachEventListeners();
   attachChartNavigationListeners();
@@ -850,6 +992,10 @@ async function initializeDashboard() {
   }
 
   try {
+    if (isNeuralStrategySelected()) {
+      selectedUniverse = "full";
+      updateStrategyControlState();
+    }
     await loadUniverse(selectedUniverse);
     await runBacktest();
   } catch (error) {
@@ -859,3 +1005,4 @@ async function initializeDashboard() {
 }
 
 initializeDashboard();
+

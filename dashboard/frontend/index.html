@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -7,369 +7,568 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <style>
     :root {
-      --bg: #0b1220;
-      --panel: #111a2b;
-      --panel-border: #23324d;
-      --muted: #9fb0c9;
-      --text: #e6edf3;
-      --strategy: #4f8cff;
-      --benchmark: #f59e0b;
-      --price: #7dd3fc;
-      --buy: #22c55e;
-      --sell: #ef4444;
-      --accent: #4f8cff;
-      --line: #2a3a54;
+      --bg: #07111f;
+      --panel: #101c30;
+      --panel-soft: #0d1729;
+      --panel-border: #243750;
+      --line: #314866;
+      --text: #e8eef5;
+      --muted: #98aac4;
+      --accent: #5ca2ff;
+      --accent-soft: rgba(92, 162, 255, 0.18);
+      --success: #4ade80;
+      --danger: #fb7185;
+      --warning: #fbbf24;
+      --shadow: 0 18px 42px rgba(0, 0, 0, 0.26);
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      margin: 24px;
-      background: var(--bg);
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top right, rgba(92, 162, 255, 0.18), transparent 34%),
+        radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 26%),
+        linear-gradient(180deg, #07111f 0%, #091423 52%, #07111f 100%);
       color: var(--text);
       font-family: system-ui, sans-serif;
     }
-    h1, h2, h3, p { margin-top: 0; }
-    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
-    h2 { font-size: 1.15rem; margin-bottom: 10px; }
-    .muted { color: var(--muted); }
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--panel-border);
-      border-radius: 14px;
-      padding: 18px;
-      margin-bottom: 18px;
-      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18);
+
+    .page-shell {
+      width: min(1480px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 36px;
     }
+
+    .page-header {
+      margin-bottom: 18px;
+    }
+
+    .page-header h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2rem, 4vw, 2.8rem);
+      line-height: 1.05;
+    }
+
+    .page-header p {
+      margin: 0;
+      max-width: 860px;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, rgba(16, 28, 48, 0.98), rgba(12, 24, 41, 0.98));
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      margin-bottom: 18px;
+    }
+
     .panel-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       gap: 12px;
-      margin-bottom: 10px;
+      margin-bottom: 14px;
     }
+
+    .panel-header h2,
+    .subpanel-header h3 {
+      margin: 0 0 6px;
+    }
+
+    .panel-header p,
+    .subpanel-header p,
+    .inline-note,
+    .muted {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .status-panel {
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      font-weight: 600;
+    }
+
     .control-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 14px;
       align-items: end;
     }
+
     .control-group {
       display: flex;
       flex-direction: column;
       gap: 6px;
       min-width: 0;
     }
+
     .control-group label {
-      font-size: 0.9rem;
       color: var(--muted);
+      font-size: 0.9rem;
     }
+
     .control-group input,
     .control-group select,
     .control-group button {
       width: 100%;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 9px 10px;
-      background: var(--bg);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: rgba(7, 17, 31, 0.92);
       color: var(--text);
       font: inherit;
     }
+
     .control-group button {
       cursor: pointer;
-      background: var(--accent);
-      border-color: var(--accent);
-      font-weight: 600;
+      background: linear-gradient(135deg, #4b8cff, #75b2ff);
+      border-color: #6ba9ff;
+      color: #08111d;
+      font-weight: 700;
     }
+
     .control-group button:disabled {
       cursor: wait;
       opacity: 0.7;
     }
-    .inline-note {
+
+    .control-notes {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .date-range-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .date-range-label {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-right: 2px;
+    }
+
+    .date-range-button,
+    .strategy-tab {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 14px;
+      background: rgba(7, 17, 31, 0.92);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+    }
+
+    .date-range-button:hover,
+    .strategy-tab:hover {
+      border-color: #4b6b94;
+      transform: translateY(-1px);
+    }
+
+    .date-range-button.active,
+    .strategy-tab.active {
+      background: linear-gradient(135deg, rgba(92, 162, 255, 0.25), rgba(92, 162, 255, 0.08));
+      border-color: #68aaff;
+      box-shadow: inset 0 0 0 1px rgba(104, 170, 255, 0.2);
+    }
+
+    .strategy-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .strategy-tab {
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .strategy-panel {
+      border: 1px solid rgba(49, 72, 102, 0.7);
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(13, 23, 41, 0.95), rgba(9, 20, 35, 0.95));
+      padding: 18px;
+    }
+
+    .strategy-panel[hidden] {
+      display: none;
+    }
+
+    .strategy-panel-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    .strategy-panel-header h2 {
+      margin: 0 0 6px;
+      font-size: 1.35rem;
+    }
+
+    .panel-status {
+      min-height: 24px;
       margin: 0 0 14px;
       color: var(--muted);
       font-size: 0.95rem;
     }
-    #status,
-    #strategyStatus {
-      min-height: 24px;
+
+    .panel-status.error {
+      color: #ffd3db;
     }
+
+    .strategy-panel[data-loading="true"] .strategy-body {
+      opacity: 0.55;
+    }
+
+    .strategy-body {
+      display: grid;
+      gap: 16px;
+    }
+
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
       gap: 12px;
     }
+
     .kpi-card {
-      background: var(--bg);
-      border: 1px solid var(--panel-border);
-      border-radius: 10px;
-      padding: 12px;
+      background: rgba(7, 17, 31, 0.92);
+      border: 1px solid rgba(36, 55, 80, 0.92);
+      border-radius: 14px;
+      padding: 13px 14px;
     }
+
     .kpi-card.primary {
-      border-color: rgba(79, 140, 255, 0.45);
-      background: linear-gradient(180deg, rgba(79, 140, 255, 0.12), rgba(11, 18, 32, 0.95));
+      border-color: rgba(92, 162, 255, 0.48);
+      background: linear-gradient(180deg, rgba(92, 162, 255, 0.12), rgba(7, 17, 31, 0.96));
     }
+
     .kpi-card .label {
       color: var(--muted);
-      font-size: 0.8rem;
+      font-size: 0.82rem;
       margin-bottom: 6px;
     }
+
     .kpi-card .value {
-      font-size: 1.12rem;
+      font-size: 1.1rem;
       font-weight: 700;
       line-height: 1.2;
     }
-    .kpi-card .value.positive { color: #4ade80; }
-    .kpi-card .value.negative { color: #f87171; }
-    .date-range-controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 10px;
+
+    .value.positive {
+      color: var(--success);
     }
-    .date-range-label {
-      color: var(--muted);
-      font-size: 0.9rem;
-      margin-right: 4px;
+
+    .value.negative {
+      color: var(--danger);
     }
-    .date-range-button {
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 7px 12px;
-      background: var(--bg);
-      color: var(--text);
-      cursor: pointer;
-      font: inherit;
+
+    .chart-stack,
+    .detail-grid {
+      display: grid;
+      gap: 16px;
     }
-    .date-range-button.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
+
+    .subpanel {
+      background: rgba(7, 17, 31, 0.92);
+      border: 1px solid rgba(36, 55, 80, 0.92);
+      border-radius: 14px;
+      padding: 15px;
     }
-    #visibleDateRange {
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.9rem;
-    }
+
     .chart-container {
       position: relative;
       width: 100%;
     }
+
     .chart-container canvas {
       width: 100%;
       height: 100%;
     }
-    .chart-container.tall { height: 340px; }
-    .chart-container.medium { height: 300px; }
-    .chart-container.small { height: 220px; }
+
+    .chart-container.tall {
+      height: 320px;
+    }
+
+    .detail-grid {
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+
+    .detail-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(36, 55, 80, 0.72);
+      font-size: 0.94rem;
+    }
+
+    .detail-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .detail-row .label {
+      color: var(--muted);
+    }
+
+    .detail-row .value {
+      text-align: right;
+      font-weight: 600;
+    }
+
     .table-wrap {
       overflow: auto;
     }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 860px;
+      min-width: 760px;
     }
-    th, td {
+
+    th,
+    td {
       text-align: left;
       padding: 9px 10px;
-      border-bottom: 1px solid var(--panel-border);
-      font-size: 0.94rem;
+      border-bottom: 1px solid rgba(36, 55, 80, 0.72);
+      font-size: 0.93rem;
       white-space: nowrap;
     }
+
     th {
       color: var(--muted);
       font-weight: 600;
     }
+
     .empty-state {
       color: var(--muted);
       padding: 12px 0;
     }
 
     @media (max-width: 900px) {
-      body { margin: 16px; }
-      .panel { padding: 16px; }
-      .chart-container.tall { height: 300px; }
-      .chart-container.medium { height: 270px; }
+      .page-shell {
+        width: min(100%, calc(100% - 24px));
+        padding-top: 20px;
+      }
     }
 
     @media (max-width: 640px) {
-      h1 { font-size: 1.7rem; }
-      .panel-header { flex-direction: column; }
-      .chart-container.tall { height: 260px; }
-      .chart-container.medium { height: 240px; }
-      .chart-container.small { height: 210px; }
+      .page-shell {
+        width: min(100%, calc(100% - 18px));
+      }
+
+      .panel,
+      .strategy-panel {
+        padding: 15px;
+      }
+
+      .chart-container.tall {
+        height: 270px;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>Trading Dashboard</h1>
+  <main class="page-shell">
+    <header class="page-header">
+      <h1>Trading Dashboard</h1>
+      <p>Compare MLP, LSTM, SMA, and the Week 1 video strategy on the same start date, KPI definitions, and chart structure.</p>
+    </header>
 
-  <div class="panel" id="status">connecting...</div>
+    <div class="panel status-panel" id="status">Connecting to backend...</div>
 
-  <div class="panel">
-    <div class="panel-header">
-      <div>
-        <h2>Weekly Contrarian Strategy</h2>
-        <p class="inline-note">Portfolio: selected universe. Price chart: selected stock.</p>
-      </div>
-    </div>
-
-    <div class="control-row">
-      <div class="control-group">
-        <label for="universeSelect">Universe</label>
-        <select id="universeSelect">
-          <option value="small">Small universe</option>
-          <option value="full">Full universe</option>
-        </select>
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Shared Controls</h2>
+          <p>These settings apply to all four strategy tabs. Portfolio start date changes the actual calculations; chart range buttons only change the visible window.</p>
+        </div>
       </div>
 
-      <div class="control-group">
-        <label for="symbolSelect">Stock inspection</label>
-        <select id="symbolSelect"></select>
+      <div class="control-row">
+        <div class="control-group">
+          <label for="portfolioStartDate">Portfolio start date</label>
+          <input id="portfolioStartDate" type="date"/>
+        </div>
+
+        <div class="control-group">
+          <label for="initialCapital">Initial capital (EGP)</label>
+          <input id="initialCapital" type="number" value="1000" min="1" step="50"/>
+        </div>
+
+        <div class="control-group">
+          <label for="universeSelect">Universe</label>
+          <select id="universeSelect">
+            <option value="full" selected>Full universe</option>
+            <option value="small">Small universe</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="runDashboardButton">Run / apply</label>
+          <button id="runDashboardButton" type="button">Run strategies</button>
+        </div>
       </div>
 
-      <div class="control-group">
-        <label for="lookbackDays">Lookback days</label>
-        <input id="lookbackDays" type="number" value="5" min="1" step="1"/>
+      <div class="control-notes">
+        <p id="startDateHint" class="inline-note">Loading valid start-date metadata...</p>
+        <p id="dashboardStatus" class="inline-note">Waiting for default settings.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Chart View Range</h2>
+          <p>The active charts can be zoomed visually without changing KPI calculations.</p>
+        </div>
       </div>
 
-      <div class="control-group">
-        <label for="buyThreshold">Buy threshold (%)</label>
-        <input id="buyThreshold" type="number" value="-5" step="0.1"/>
+      <div class="date-range-controls" id="dateRangeControls" aria-label="Chart view range">
+        <span class="date-range-label">Visible range:</span>
+        <button type="button" class="date-range-button" data-range="1M">1M</button>
+        <button type="button" class="date-range-button" data-range="3M">3M</button>
+        <button type="button" class="date-range-button" data-range="6M">6M</button>
+        <button type="button" class="date-range-button" data-range="1Y">1Y</button>
+        <button type="button" class="date-range-button" data-range="3Y">3Y</button>
+        <button type="button" class="date-range-button active" data-range="ALL">All</button>
+      </div>
+      <p id="visibleDateRange" class="inline-note">Visible chart window: waiting for strategy data.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Strategy Comparison Tabs</h2>
+          <p>All tabs share the same KPI labels and the same portfolio, equity, and drawdown charts for a fair comparison.</p>
+        </div>
       </div>
 
-      <div class="control-group">
-        <label for="sellThreshold">Sell threshold (%)</label>
-        <input id="sellThreshold" type="number" value="10" step="0.1"/>
+      <div class="strategy-tabs" role="tablist" aria-label="Strategy tabs">
+        <button class="strategy-tab active" id="strategyTabMLP" data-strategy="mlp" role="tab" aria-controls="strategyPanelMLP" aria-selected="true">MLP</button>
+        <button class="strategy-tab" id="strategyTabLSTM" data-strategy="lstm" role="tab" aria-controls="strategyPanelLSTM" aria-selected="false">LSTM</button>
+        <button class="strategy-tab" id="strategyTabSMA" data-strategy="sma" role="tab" aria-controls="strategyPanelSMA" aria-selected="false">SMA</button>
+        <button class="strategy-tab" id="strategyTabVideo" data-strategy="video" role="tab" aria-controls="strategyPanelVideo" aria-selected="false">Video Strategy</button>
       </div>
 
-      <div class="control-group">
-        <label for="buyNotional">Buy notional (EGP)</label>
-        <input id="buyNotional" type="number" value="5" min="0.01" step="0.5"/>
+      <div id="strategyPanels"></div>
+    </section>
+  </main>
+
+  <template id="strategyPanelTemplate">
+    <section class="strategy-panel" data-role="strategyPanel" data-loading="false">
+      <div class="strategy-panel-header">
+        <div>
+          <h2 data-role="strategyTitle">Strategy</h2>
+          <p class="muted" data-role="strategyNote">Run strategies to load this tab.</p>
+        </div>
       </div>
 
-      <div class="control-group">
-        <label for="sellNotional">Sell notional (EGP)</label>
-        <input id="sellNotional" type="number" value="10" min="0.01" step="0.5"/>
+      <p class="panel-status" data-role="panelStatus">Run strategies to load this tab.</p>
+
+      <div class="strategy-body" data-role="strategyBody">
+        <div class="kpi-grid" data-role="kpiGrid"></div>
+
+        <div class="chart-stack">
+          <div class="subpanel">
+            <div class="subpanel-header">
+              <h3>Portfolio Value</h3>
+              <p>Strategy and benchmark value in EGP from the selected portfolio start date.</p>
+            </div>
+            <div class="chart-container tall">
+              <canvas data-chart="portfolio"></canvas>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <div class="subpanel-header">
+              <h3>Equity Growth</h3>
+              <p>Both series are normalized to 1.0 at the selected portfolio start date.</p>
+            </div>
+            <div class="chart-container tall">
+              <canvas data-chart="equity"></canvas>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <div class="subpanel-header">
+              <h3>Portfolio Drawdown</h3>
+              <p>Drawdown is plotted as a percentage below the running peak.</p>
+            </div>
+            <div class="chart-container tall">
+              <canvas data-chart="drawdown"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-grid">
+          <div class="subpanel">
+            <div class="subpanel-header">
+              <h3>Configuration</h3>
+              <p>The exact parameters used for this backtest run.</p>
+            </div>
+            <div class="detail-list" data-role="parameterSummary"></div>
+          </div>
+
+          <div class="subpanel">
+            <div class="subpanel-header">
+              <h3>Strategy Details</h3>
+              <p>Additional strategy-specific information below the shared KPI block.</p>
+            </div>
+            <div class="detail-list" data-role="strategyDetails"></div>
+          </div>
+        </div>
+
+        <div class="subpanel">
+          <div class="subpanel-header">
+            <h3>Trade History</h3>
+            <p>Each tab keeps its own trade table with the same common columns.</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Operation</th>
+                  <th>Symbol</th>
+                  <th>Price</th>
+                  <th>Shares / units</th>
+                  <th>Notional</th>
+                  <th>Portfolio value after</th>
+                </tr>
+              </thead>
+              <tbody data-role="tradeTableBody">
+                <tr>
+                  <td colspan="7" class="empty-state">Run strategies to load trade history.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-
-      <div class="control-group">
-        <label for="initialCash">Initial cash (EGP)</label>
-        <input id="initialCash" type="number" value="1000" min="1" step="50"/>
-      </div>
-
-      <div class="control-group">
-        <label for="runBacktestButton">Run backtest</label>
-        <button id="runBacktestButton" type="button">Run backtest</button>
-      </div>
-    </div>
-
-    <div id="strategyStatus" class="muted">Choose a universe and run the weekly contrarian backtest.</div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header">
-      <div>
-        <h2>Performance Snapshot</h2>
-        <p class="muted">Primary metrics stay tied to the full backtest, even when the chart range is filtered.</p>
-      </div>
-    </div>
-
-    <div class="kpi-grid">
-      <div class="kpi-card primary"><div class="label">Total return</div><div class="value" id="kpiTotalReturn">—</div></div>
-      <div class="kpi-card primary"><div class="label">Sharpe ratio</div><div class="value" id="kpiSharpe">—</div></div>
-      <div class="kpi-card primary"><div class="label">Maximum drawdown</div><div class="value" id="kpiMaxDrawdown">—</div></div>
-      <div class="kpi-card"><div class="label">Final portfolio value</div><div class="value" id="kpiFinalValue">—</div></div>
-      <div class="kpi-card"><div class="label">Profit / loss</div><div class="value" id="kpiProfitLoss">—</div></div>
-      <div class="kpi-card"><div class="label">Benchmark return</div><div class="value" id="kpiBenchmarkReturn">—</div></div>
-      <div class="kpi-card"><div class="label">Excess return</div><div class="value" id="kpiExcessReturn">—</div></div>
-      <div class="kpi-card"><div class="label">Buy operations</div><div class="value" id="kpiBuyOperations">—</div></div>
-      <div class="kpi-card"><div class="label">Sell operations</div><div class="value" id="kpiSellOperations">—</div></div>
-      <div class="kpi-card"><div class="label">Skipped buys</div><div class="value" id="kpiSkippedBuys">—</div></div>
-      <div class="kpi-card"><div class="label">Open positions</div><div class="value" id="kpiOpenPositions">—</div></div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="date-range-controls" id="dateRangeControls" aria-label="Select chart date range">
-      <span class="date-range-label">View:</span>
-      <button type="button" class="date-range-button" data-range="1M">1M</button>
-      <button type="button" class="date-range-button" data-range="3M">3M</button>
-      <button type="button" class="date-range-button" data-range="6M">6M</button>
-      <button type="button" class="date-range-button" data-range="1Y">1Y</button>
-      <button type="button" class="date-range-button" data-range="3Y">3Y</button>
-      <button type="button" class="date-range-button active" data-range="ALL">All</button>
-    </div>
-    <p id="visibleDateRange">Showing all available dates</p>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header">
-      <div>
-        <h2>Equity Curve vs Benchmark</h2>
-        <p class="muted">Normalized portfolio value, starting from 1.0 EGP.</p>
-      </div>
-    </div>
-    <div class="chart-container tall">
-      <canvas id="equityChart"></canvas>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header">
-      <div>
-        <h2>Selected Stock Diagnostics</h2>
-        <p class="muted">Executed trades only for the currently selected stock.</p>
-      </div>
-    </div>
-    <div class="chart-container medium">
-      <canvas id="priceChart"></canvas>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header">
-      <div>
-        <h2>Daily Operations</h2>
-        <p class="muted">Buy and sell counts across the whole selected universe.</p>
-      </div>
-    </div>
-    <div class="chart-container small">
-      <canvas id="operationsChart"></canvas>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-header">
-      <div>
-        <h2>Trade History</h2>
-        <p class="muted">All executed trades for the multi-asset weekly contrarian portfolio.</p>
-      </div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Operation</th>
-            <th>Date</th>
-            <th>Symbol</th>
-            <th>Signal return</th>
-            <th>Price</th>
-            <th>Notional</th>
-            <th>Shares</th>
-            <th>Cash after</th>
-            <th>Position after</th>
-          </tr>
-        </thead>
-        <tbody id="tradeTableBody">
-          <tr>
-            <td colspan="9" class="empty-state">Run a backtest to load trades.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+    </section>
+  </template>
 
   <script src="app.js"></script>
 </body>
