@@ -62,6 +62,56 @@
       gap: 6px;
       font-size: 0.9rem;
     }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 20px 0;
+    }
+    .tab-button {
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid #223653;
+      background: #0d1728;
+      color: #cbd5e1;
+      cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+    .tab-button.active {
+      background: #1d4ed8;
+      color: #f8fafc;
+      border-color: #2563eb;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .metric-card {
+      background: #0d1728;
+      border: 1px solid #223653;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .metric-card strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #8da1bf;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      letter-spacing: 0.04em;
+    }
+    .metric-card span {
+      font-size: 1rem;
+      color: #f8fafc;
+    }
     .control-field label {
       color: #8da1bf;
       font-size: 0.8rem;
@@ -141,117 +191,191 @@
 <body>
   <h1>Trading Dashboard</h1>
   <div class="panel" id="status">connecting…</div>
-  <div class="panel">
-    <h2>MA9–MA20 Strategy</h2>
-    <div class="control-row">
-      <div class="control-field">
-        <label for="symbolSelect">Stock</label>
-        <select id="symbolSelect"></select>
-      </div>
-      <div class="control-field">
-        <label for="fastWindow">Fast MA</label>
-        <input id="fastWindow" type="number" value="9" min="1" />
-      </div>
-      <div class="control-field">
-        <label for="slowWindow">Slow MA</label>
-        <input id="slowWindow" type="number" value="20" min="2" />
-      </div>
-      <div class="control-field">
-        <label for="initialCash">Initial cash</label>
-        <input id="initialCash" type="number" value="1000" min="1" step="100" />
-      </div>
-      <div class="control-field">
-        <label for="runBacktestButton">Action</label>
-        <button id="runBacktestButton" type="button">Run backtest</button>
-      </div>
-    </div>
-    <div id="strategyStatus" class="strategy-status">Select a symbol and run a backtest.</div>
+  <div class="tabs">
+    <button class="tab-button active" data-tab="pricePanel">Price chart</button>
+    <button class="tab-button" data-tab="strategyPanel">Strategy backtest</button>
+    <button class="tab-button" data-tab="predictionPanel">Prediction portfolio</button>
+    <button class="tab-button" data-tab="comparePanel">Model comparison</button>
   </div>
-  <div class="panel">
-    <h2>Price Overview</h2>
-    <div class="chart-wrap">
-      <canvas id="strategyPriceChart"></canvas>
-    </div>
-    <div id="chartMessage" class="chart-message">Loading market data…</div>
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <span class="kpi-label">Final portfolio value</span>
-        <div class="kpi-value" id="kpiFinalValue">—</div>
+
+  <div id="pricePanel" class="tab-content active">
+    <div class="panel">
+      <h2>Price Overview</h2>
+      <div class="control-row">
+        <div class="control-field">
+          <label for="priceSymbolSelect">Stock</label>
+          <select id="priceSymbolSelect"></select>
+        </div>
+        <div class="control-field">
+          <label for="priceSmaWindow">SMA window</label>
+          <input id="priceSmaWindow" type="number" value="20" min="2" />
+        </div>
       </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Profit / loss</span>
-        <div class="kpi-value" id="kpiProfitLoss">—</div>
+      <div class="chart-wrap">
+        <canvas id="strategyPriceChart"></canvas>
       </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Total return</span>
-        <div class="kpi-value" id="kpiTotalReturn">—</div>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Maximum drawdown</span>
-        <div class="kpi-value" id="kpiMaxDrawdown">—</div>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Maximum drawdown %</span>
-        <div class="kpi-value" id="kpiMaxDrawdownPct">—</div>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Buy operations</span>
-        <div class="kpi-value" id="kpiBuyOperations">—</div>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Sell operations</span>
-        <div class="kpi-value" id="kpiSellOperations">—</div>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Completed trades</span>
-        <div class="kpi-value" id="kpiCompletedTrades">—</div>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Market exposure</span>
-        <div class="kpi-value" id="kpiExposure">—</div>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Final position</span>
-        <div class="kpi-value" id="kpiFinalPosition">—</div>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Buy-and-hold return</span>
-        <div class="kpi-value" id="kpiBuyHoldReturn">—</div>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Excess return</span>
-        <div class="kpi-value" id="kpiExcessReturn">—</div>
-      </div>
+      <div id="chartMessage" class="chart-message">Loading market data…</div>
     </div>
   </div>
-  <div class="panel">
-    <h2>Portfolio Performance</h2>
-    <div class="chart-wrap">
-      <canvas id="portfolioChart"></canvas>
+
+  <div id="strategyPanel" class="tab-content">
+    <div class="panel">
+      <h2>MA9–MA20 Strategy</h2>
+      <div class="control-row">
+        <div class="control-field">
+          <label for="strategySymbolSelect">Stock</label>
+          <select id="strategySymbolSelect"></select>
+        </div>
+        <div class="control-field">
+          <label for="fastWindow">Fast MA</label>
+          <input id="fastWindow" type="number" value="9" min="1" />
+        </div>
+        <div class="control-field">
+          <label for="slowWindow">Slow MA</label>
+          <input id="slowWindow" type="number" value="20" min="2" />
+        </div>
+        <div class="control-field">
+          <label for="initialCash">Initial cash</label>
+          <input id="initialCash" type="number" value="1000" min="1" step="100" />
+        </div>
+        <div class="control-field">
+          <label for="runBacktestButton">Action</label>
+          <button id="runBacktestButton" type="button">Run backtest</button>
+        </div>
+      </div>
+      <div id="strategyStatus" class="strategy-status">Select a symbol and run a backtest.</div>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <span class="kpi-label">Final portfolio value</span>
+          <div class="kpi-value" id="kpiFinalValue">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Profit / loss</span>
+          <div class="kpi-value" id="kpiProfitLoss">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Total return</span>
+          <div class="kpi-value" id="kpiTotalReturn">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Maximum drawdown</span>
+          <div class="kpi-value" id="kpiMaxDrawdown">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Maximum drawdown %</span>
+          <div class="kpi-value" id="kpiMaxDrawdownPct">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Buy operations</span>
+          <div class="kpi-value" id="kpiBuyOperations">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Sell operations</span>
+          <div class="kpi-value" id="kpiSellOperations">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Completed trades</span>
+          <div class="kpi-value" id="kpiCompletedTrades">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Market exposure</span>
+          <div class="kpi-value" id="kpiExposure">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Final position</span>
+          <div class="kpi-value" id="kpiFinalPosition">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Buy-and-hold return</span>
+          <div class="kpi-value" id="kpiBuyHoldReturn">—</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Excess return</span>
+          <div class="kpi-value" id="kpiExcessReturn">—</div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="portfolioChart"></canvas>
+      </div>
+      <div class="panel">
+        <h2>Trade history</h2>
+        <div class="trade-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Operation</th>
+                <th>Date</th>
+                <th>Price</th>
+                <th>Shares</th>
+                <th>Cash after</th>
+                <th>Portfolio after</th>
+              </tr>
+            </thead>
+            <tbody id="tradeTableBody">
+              <tr>
+                <td colspan="6" class="empty-state">No trades yet. Run a backtest to populate this table.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="panel">
-    <h2>Trade history</h2>
-    <div class="trade-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Operation</th>
-            <th>Date</th>
-            <th>Price</th>
-            <th>Shares</th>
-            <th>Cash after</th>
-            <th>Portfolio after</th>
-          </tr>
-        </thead>
-        <tbody id="tradeTableBody">
-          <tr>
-            <td colspan="6" class="empty-state">No trades yet. Run a backtest to populate this table.</td>
-          </tr>
-        </tbody>
-      </table>
+
+  <div id="predictionPanel" class="tab-content">
+    <div class="panel">
+      <h2>Prediction Portfolio</h2>
+      <div class="control-row">
+        <div class="control-field">
+          <label for="topNInput">Top N</label>
+          <input id="topNInput" type="number" value="3" min="1" />
+        </div>
+        <div class="control-field">
+          <label for="epochsInput">Epochs</label>
+          <input id="epochsInput" type="number" value="20" min="1" />
+        </div>
+        <div class="control-field">
+          <label for="trainFracInput">Train fraction</label>
+          <input id="trainFracInput" type="number" value="0.7" min="0.1" max="0.9" step="0.1" />
+        </div>
+        <div class="control-field">
+          <label for="runPredictionButton">Action</label>
+          <button id="runPredictionButton" type="button">Run prediction portfolio</button>
+        </div>
+      </div>
+      <div id="predictionStatus" class="strategy-status">Generate prediction weights and backtest them.</div>
+      <div class="chart-wrap">
+        <canvas id="predictionPortfolioChart"></canvas>
+      </div>
     </div>
   </div>
+
+  <div id="comparePanel" class="tab-content">
+    <div class="panel">
+      <h2>Model Comparison</h2>
+      <div class="control-row">
+        <div class="control-field">
+          <label for="compareSymbol">Symbol</label>
+          <select id="compareSymbol"></select>
+        </div>
+        <div class="control-field">
+          <label for="seqLenInput">LSTM sequence len</label>
+          <input id="seqLenInput" type="number" value="5" min="1" />
+        </div>
+        <div class="control-field">
+          <label for="hiddenInput">Hidden size</label>
+          <input id="hiddenInput" type="number" value="16" min="1" />
+        </div>
+        <div class="control-field">
+          <label for="runCompareButton">Action</label>
+          <button id="runCompareButton" type="button">Compare models</button>
+        </div>
+      </div>
+      <div id="compareStatus" class="strategy-status">Compare MLP and LSTM performance metrics.</div>
+      <div class="metric-grid" id="compareMetrics"></div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

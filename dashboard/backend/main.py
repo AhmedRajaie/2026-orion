@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 
 import numpy as np
+import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,7 +13,10 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from tradinglab.data_feed import DataFeed
+from tradinglab.features import build_dataset, feature_columns, to_sequences
 from tradinglab.indicators import sma
+from tradinglab.models import DeepMLP, LSTMRegressor
+from tradinglab.simulator import PortfolioSimulator
 
 app = FastAPI(title="Trading dashboard")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -87,6 +91,111 @@ def _round_metric(value: float | int | None) -> float | None:
     if value is None:
         return None
     return round(float(value), 2)
+
+
+def _build_dataset_with_indices(symbol_index: int):
+    close = feed.close[:, symbol_index]
+    X_full = feature_columns(feed, symbol_index)
+    y_full = np.full(feed.n_days, np.nan)
+    y_full[:-1] = feed.returns[1:, symbol_index]
+    valid = ~np.isnan(X_full).any(axis=1) & ~np.isnan(y_full)
+    indices = np.where(valid)[0]
+    return X_full[valid].astype(np.float32), y_full[valid].astype(np.float32), indices
+
+
+def _build_signal_weights(preds, top_n: int = 3):
+    preds = np.asarray(preds, dtype=float)
+    weights = np.zeros_like(preds, dtype=float)
+    if len(preds) == 0:
+        return weights
+    positive = np.where(preds > 0)[0]
+    if len(positive) == 0:
+        return weights
+    top = positive[np.argsort(preds[positive])[::-1][: min(top_n, len(positive))]]
+    weights[top] = 1.0 / len(top)
+    return weights
+
+
+def _train_mlp(X, y, epochs: int = 20, hidden: int = 16, n_hidden_layers: int = 1):
+    torch.manual_seed(0)
+    np.random.seed(0)
+    model = DeepMLP(n_features=X.shape[1], hidden=hidden, n_hidden_layers=n_hidden_layers)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    loss_fn = torch.nn.MSELoss()
+    Xtr = torch.tensor(X, dtype=torch.float32)
+    ytr = torch.tensor(y, dtype=torch.float32)
+    for _ in range(epochs):
+        optimizer.zero_grad()
+        loss = loss_fn(model(Xtr), ytr)
+        loss.backward()
+        optimizer.step()
+    return model
+
+
+def _train_lstm(X, y, seq_len: int = 5, epochs: int = 60, hidden: int = 32):
+    torch.manual_seed(0)
+    np.random.seed(0)
+    Xseq, yseq = to_sequences(X, y, seq_len)
+    if len(Xseq) == 0:
+        raise ValueError("Not enough data to build sequence inputs.")
+    split = int(len(Xseq) * 0.7)
+    X_train, y_train = Xseq[:split], yseq[:split]
+    model = LSTMRegressor(n_features=Xseq.shape[2], hidden=hidden)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    loss_fn = torch.nn.MSELoss()
+    Xtr = torch.tensor(X_train, dtype=torch.float32)
+    ytr = torch.tensor(y_train, dtype=torch.float32)
+    for _ in range(epochs):
+        optimizer.zero_grad()
+        loss = loss_fn(model(Xtr), ytr)
+        loss.backward()
+        optimizer.step()
+    return model, Xseq, yseq
+
+
+def _regression_metrics(actual: np.ndarray, pred: np.ndarray) -> dict[str, float]:
+    actual = np.asarray(actual, dtype=float)
+    pred = np.asarray(pred, dtype=float)
+    diff = pred - actual
+    mse = float(np.mean(diff ** 2))
+    mae = float(np.mean(np.abs(diff)))
+    rmse = float(np.sqrt(mse))
+    ss_res = float(np.sum(diff ** 2))
+    ss_tot = float(np.sum((actual - actual.mean()) ** 2))
+    r2 = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 1.0
+    return {
+        "mse": round(mse, 6),
+        "rmse": round(rmse, 6),
+        "mae": round(mae, 6),
+        "r2": round(r2, 4),
+    }
+
+
+def _build_prediction_portfolio(top_n: int = 3, train_frac: float = 0.7, epochs: int = 20, hidden: int = 16, n_hidden_layers: int = 1):
+    predictions = []
+    test_indices = None
+    for asset_index in range(feed.n_assets):
+        X, y, indices = _build_dataset_with_indices(asset_index)
+        split = int(len(X) * train_frac)
+        if split >= len(X):
+            raise HTTPException(status_code=400, detail="Not enough data to train prediction portfolio.")
+        if test_indices is None:
+            test_indices = indices[split:]
+        model = _train_mlp(X[:split], y[:split], epochs=epochs, hidden=hidden, n_hidden_layers=n_hidden_layers)
+        with torch.no_grad():
+            preds = model(torch.tensor(X[split:], dtype=torch.float32)).cpu().numpy()
+        predictions.append(preds)
+
+    if test_indices is None or len(test_indices) == 0:
+        raise HTTPException(status_code=400, detail="No prediction test period available.")
+
+    predictions = np.column_stack(predictions)
+    weight_matrix = np.zeros((feed.n_days, feed.n_assets), dtype=float)
+    for row_idx, day_idx in enumerate(test_indices):
+        weight_matrix[day_idx] = _build_signal_weights(predictions[row_idx], top_n)
+
+    start_day = int(test_indices[0])
+    return weight_matrix, start_day
 
 
 @app.get("/health")
@@ -164,6 +273,77 @@ def strategy(symbol: str) -> dict[str, list[float] | list[str] | int]:
         "max_drawdown": float(max_drawdown),
         "buy_count": buy_count,
         "sell_count": sell_count,
+    }
+
+
+@app.get("/prediction_portfolio")
+def prediction_portfolio(
+    top_n: int = 3,
+    train_frac: float = 0.7,
+    epochs: int = 20,
+    hidden: int = 16,
+    n_hidden_layers: int = 1,
+    commission: float = 0.0,
+) -> dict[str, object]:
+    weight_matrix, start_day = _build_prediction_portfolio(
+        top_n=top_n,
+        train_frac=train_frac,
+        epochs=epochs,
+        hidden=hidden,
+        n_hidden_layers=n_hidden_layers,
+    )
+    sim = PortfolioSimulator(feed, benchmark="equal_weight", commission=commission)
+    end_day = feed.n_days - 1
+    result = sim.run(weight_matrix, start=start_day - 1, end=end_day)
+    return {
+        "dates": _dates_to_strings(result["dates"]),
+        "portfolio": [float(x) for x in result["portfolio"]],
+        "benchmark": [float(x) for x in result["benchmark"]],
+        "top_n": top_n,
+        "strategy": "prediction_portfolio",
+    }
+
+
+@app.get("/model_compare")
+def model_compare(symbol: str = "ABUK", seq_len: int = 5, hidden: int = 16) -> dict[str, object]:
+    if symbol not in feed.symbols:
+        raise HTTPException(status_code=404, detail="symbol not found")
+    symbol_index = feed.symbols.index(symbol)
+    X, y, _ = _build_dataset_with_indices(symbol_index)
+    if len(X) == 0:
+        raise HTTPException(status_code=400, detail="Not enough data for model comparison.")
+
+    split = int(len(X) * 0.7)
+    if split >= len(X):
+        raise HTTPException(status_code=400, detail="Not enough data for model comparison.")
+
+    model = _train_mlp(X[:split], y[:split], epochs=20, hidden=hidden, n_hidden_layers=1)
+    mlp_pred_train = model(torch.tensor(X[:split], dtype=torch.float32)).cpu().numpy()
+    mlp_pred_test = model(torch.tensor(X[split:], dtype=torch.float32)).cpu().numpy()
+    mlp_train_metrics = _regression_metrics(y[:split], mlp_pred_train)
+    mlp_test_metrics = _regression_metrics(y[split:], mlp_pred_test)
+
+    try:
+        lstm_model, Xseq, yseq = _train_lstm(X, y, seq_len=seq_len, epochs=60, hidden=hidden)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Not enough sequence data for LSTM.")
+
+    split_seq = int(len(Xseq) * 0.7)
+    lstm_pred_train = lstm_model(torch.tensor(Xseq[:split_seq], dtype=torch.float32)).cpu().numpy()
+    lstm_pred_test = lstm_model(torch.tensor(Xseq[split_seq:], dtype=torch.float32)).cpu().numpy()
+    lstm_train_metrics = _regression_metrics(yseq[:split_seq], lstm_pred_train)
+    lstm_test_metrics = _regression_metrics(yseq[split_seq:], lstm_pred_test)
+
+    return {
+        "symbol": symbol,
+        "mlp": {
+            "train": mlp_train_metrics,
+            "test": mlp_test_metrics,
+        },
+        "lstm": {
+            "train": lstm_train_metrics,
+            "test": lstm_test_metrics,
+        },
     }
 
 

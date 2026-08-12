@@ -61,7 +61,12 @@ def feature_columns(feed: DataFeed, asset: int) -> np.ndarray:
     vol_avg20 = np.full(feed.n_days, np.nan)
     for i in range(19, feed.n_days):
         vol_avg20[i] = volume[i-19:i+1].mean()
-    volume_ratio = volume / vol_avg20
+    volume_ratio = np.divide(
+        volume,
+        vol_avg20,
+        out=np.full_like(volume, np.nan, dtype=np.float64),
+        where=~np.isnan(vol_avg20)
+    )
 
     cols = [
         ret,

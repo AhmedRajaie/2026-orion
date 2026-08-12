@@ -4,10 +4,25 @@ const statusEl = document.getElementById("status");
 const chartMessageEl = document.getElementById("chartMessage");
 const strategyStatusEl = document.getElementById("strategyStatus");
 const runBacktestButtonEl = document.getElementById("runBacktestButton");
-const symbolSelectEl = document.getElementById("symbolSelect");
+const priceSymbolSelectEl = document.getElementById("priceSymbolSelect");
+const strategySymbolSelectEl = document.getElementById("strategySymbolSelect");
+const priceSmaWindowEl = document.getElementById("priceSmaWindow");
+const runPredictionButtonEl = document.getElementById("runPredictionButton");
+const predictionStatusEl = document.getElementById("predictionStatus");
+const predictionPortfolioCanvas = document.getElementById("predictionPortfolioChart");
+const compareStatusEl = document.getElementById("compareStatus");
+const compareMetricsEl = document.getElementById("compareMetrics");
+const topNInput = document.getElementById("topNInput");
+const epochsInput = document.getElementById("epochsInput");
+const trainFracInput = document.getElementById("trainFracInput");
+const compareSymbolSelect = document.getElementById("compareSymbol");
+const seqLenInput = document.getElementById("seqLenInput");
+const hiddenInput = document.getElementById("hiddenInput");
+const runCompareButtonEl = document.getElementById("runCompareButton");
 
-let strategyPriceChart = null;
+let priceChart = null;
 let portfolioChart = null;
+let predictionChart = null;
 
 if (typeof Chart !== "undefined" && typeof window.ChartZoom !== "undefined") {
   Chart.register(window.ChartZoom);
@@ -25,6 +40,60 @@ function setChartMessage(message) {
 function setStrategyStatus(message, isError = false) {
   strategyStatusEl.textContent = message;
   strategyStatusEl.style.color = isError ? "#f87171" : "#8fb4ff";
+}
+
+function setPredictionStatus(message, isError = false) {
+  predictionStatusEl.textContent = message;
+  predictionStatusEl.style.color = isError ? "#f87171" : "#8fb4ff";
+}
+
+function setCompareStatus(message, isError = false) {
+  compareStatusEl.textContent = message;
+  compareStatusEl.style.color = isError ? "#f87171" : "#8fb4ff";
+}
+
+function setupTabs() {
+  const tabButtons = document.querySelectorAll(".tab-button");
+  tabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const tabId = button.dataset.tab;
+      const activeButtons = document.querySelectorAll(".tab-button.active");
+      const activeContents = document.querySelectorAll(".tab-content.active");
+
+      activeButtons.forEach((activeButton) => activeButton.classList.remove("active"));
+      activeContents.forEach((activeContent) => activeContent.classList.remove("active"));
+
+      button.classList.add("active");
+      const tabContent = document.getElementById(tabId);
+      if (tabContent) {
+        tabContent.classList.add("active");
+      }
+    });
+  });
+}
+
+function populateSelect(selectEl, symbols) {
+  if (!selectEl) {
+    return;
+  }
+
+  selectEl.innerHTML = "";
+  symbols.forEach((symbol) => {
+    const option = document.createElement("option");
+    option.value = symbol;
+    option.textContent = symbol;
+    selectEl.appendChild(option);
+  });
+
+  if (symbols.length > 0) {
+    selectEl.value = symbols[0];
+  }
+}
+
+function populateSymbolSelects(symbols) {
+  populateSelect(priceSymbolSelectEl, symbols);
+  populateSelect(strategySymbolSelectEl, symbols);
+  populateSelect(compareSymbolSelect, symbols);
 }
 
 function setValueState(element, value) {
@@ -126,39 +195,120 @@ function renderKpis(kpis) {
   setValueState(excessReturnEl, Number(kpis.excess_return_pct_points) || 0);
 }
 
-function populateSymbolSelect(symbols) {
-  if (!symbolSelectEl) {
+function renderPredictionChart(data) {
+  if (!predictionPortfolioCanvas) {
     return;
   }
 
-  symbolSelectEl.innerHTML = "";
-  symbols.forEach((symbol) => {
-    const option = document.createElement("option");
-    option.value = symbol;
-    option.textContent = symbol;
-    symbolSelectEl.appendChild(option);
-  });
-
-  if (symbols.length > 0) {
-    symbolSelectEl.value = symbols[0];
+  if (predictionChart) {
+    predictionChart.destroy();
   }
+
+  const ctx = predictionPortfolioCanvas.getContext("2d");
+  predictionChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.dates || [],
+      datasets: [
+        {
+          label: "Prediction portfolio",
+          data: data.portfolio || [],
+          borderColor: "#22c55e",
+          backgroundColor: "rgba(34, 197, 94, 0.15)",
+          borderWidth: 1.8,
+          pointRadius: 0,
+          tension: 0.2,
+        },
+        {
+          label: "Benchmark",
+          data: data.benchmark || [],
+          borderColor: "#f59e0b",
+          backgroundColor: "rgba(245, 158, 11, 0.15)",
+          borderWidth: 1.8,
+          pointRadius: 0,
+          tension: 0.2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          labels: {
+            color: "#f8fafc",
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: "#cbd5e1",
+            maxTicksLimit: 10,
+          },
+          grid: {
+            color: "rgba(255,255,255,0.06)",
+          },
+        },
+        y: {
+          ticks: {
+            color: "#cbd5e1",
+          },
+          grid: {
+            color: "rgba(255,255,255,0.06)",
+          },
+        },
+      },
+    },
+  });
 }
 
-function renderStrategyPriceChart(data) {
+function renderComparisonMetrics(data) {
+  if (!compareMetricsEl) {
+    return;
+  }
+
+  compareMetricsEl.innerHTML = "";
+  const metrics = [
+    { label: "MLP train MSE", value: data.mlp.train.mse },
+    { label: "MLP train RMSE", value: data.mlp.train.rmse },
+    { label: "MLP train MAE", value: data.mlp.train.mae },
+    { label: "MLP train R²", value: data.mlp.train.r2 },
+    { label: "MLP test MSE", value: data.mlp.test.mse },
+    { label: "MLP test RMSE", value: data.mlp.test.rmse },
+    { label: "MLP test MAE", value: data.mlp.test.mae },
+    { label: "MLP test R²", value: data.mlp.test.r2 },
+    { label: "LSTM train MSE", value: data.lstm.train.mse },
+    { label: "LSTM train RMSE", value: data.lstm.train.rmse },
+    { label: "LSTM train MAE", value: data.lstm.train.mae },
+    { label: "LSTM train R²", value: data.lstm.train.r2 },
+    { label: "LSTM test MSE", value: data.lstm.test.mse },
+    { label: "LSTM test RMSE", value: data.lstm.test.rmse },
+    { label: "LSTM test MAE", value: data.lstm.test.mae },
+    { label: "LSTM test R²", value: data.lstm.test.r2 },
+  ];
+
+  metrics.forEach((metric) => {
+    const card = document.createElement("div");
+    card.className = "metric-card";
+    card.innerHTML = `<strong>${metric.label}</strong><span>${metric.value}</span>`;
+    compareMetricsEl.appendChild(card);
+  });
+}
+
+function renderPriceChart(data) {
   const canvas = document.getElementById("strategyPriceChart");
   if (!canvas) {
     return;
   }
 
-  if (strategyPriceChart) {
-    strategyPriceChart.destroy();
+  if (priceChart) {
+    priceChart.destroy();
   }
 
   const ctx = canvas.getContext("2d");
-  const fastWindow = data.parameters && data.parameters.fast_window ? data.parameters.fast_window : 9;
-  const slowWindow = data.parameters && data.parameters.slow_window ? data.parameters.slow_window : 20;
-
-  strategyPriceChart = new Chart(ctx, {
+  priceChart = new Chart(ctx, {
     type: "line",
     data: {
       labels: data.dates || [],
@@ -168,55 +318,20 @@ function renderStrategyPriceChart(data) {
           data: data.close || [],
           borderColor: "#60a5fa",
           backgroundColor: "rgba(96, 165, 250, 0.15)",
-          borderWidth: 1.2,
+          borderWidth: 1.5,
           pointRadius: 0,
           tension: 0.2,
           spanGaps: false,
         },
         {
-          label: `MA${fastWindow}`,
-          data: data.fast_ma || [],
+          label: `SMA ${data.window || 20}`,
+          data: data.sma || [],
           borderColor: "#f59e0b",
           backgroundColor: "rgba(245, 158, 11, 0.15)",
           borderWidth: 1.5,
           pointRadius: 0,
           tension: 0.2,
           spanGaps: true,
-        },
-        {
-          label: `MA${slowWindow}`,
-          data: data.slow_ma || [],
-          borderColor: "#8b5cf6",
-          backgroundColor: "rgba(139, 92, 246, 0.15)",
-          borderWidth: 1.5,
-          pointRadius: 0,
-          tension: 0.2,
-          spanGaps: true,
-        },
-        {
-          label: "Buy",
-          data: data.buy_markers || [],
-          type: "line",
-          showLine: false,
-          pointStyle: "triangle",
-          pointRadius: 7,
-          pointHoverRadius: 9,
-          pointBackgroundColor: "#22c55e",
-          pointBorderColor: "#22c55e",
-          spanGaps: false,
-        },
-        {
-          label: "Sell",
-          data: data.sell_markers || [],
-          type: "line",
-          showLine: false,
-          pointStyle: "triangle",
-          pointRotation: 180,
-          pointRadius: 7,
-          pointHoverRadius: 9,
-          pointBackgroundColor: "#ef4444",
-          pointBorderColor: "#ef4444",
-          spanGaps: false,
         },
       ],
     },
@@ -389,12 +504,44 @@ function renderTradeTable(trades) {
   });
 }
 
-async function runBacktest() {
-  if (!symbolSelectEl) {
+async function loadPriceData(symbol, indicatorWindow = 20) {
+  if (!symbol) {
     return;
   }
 
-  const symbol = symbolSelectEl.value;
+  setChartMessage("Loading price and indicator data...");
+  try {
+    const [priceData, indicatorData] = await Promise.all([
+      fetchJson(`/prices/${encodeURIComponent(symbol)}`),
+      fetchJson(`/indicators/${encodeURIComponent(symbol)}?window=${indicatorWindow}`),
+    ]);
+
+    if (!priceData || !Array.isArray(priceData.dates) || !Array.isArray(priceData.close)) {
+      throw new Error("The prices endpoint did not return valid data.");
+    }
+    if (!indicatorData || !Array.isArray(indicatorData.dates) || !Array.isArray(indicatorData.sma)) {
+      throw new Error("The indicators endpoint did not return valid data.");
+    }
+
+    renderPriceChart({
+      dates: priceData.dates,
+      close: priceData.close,
+      sma: indicatorData.sma,
+      window: indicatorWindow,
+    });
+    setChartMessage("");
+  } catch (error) {
+    console.error("Price load failed", error);
+    setChartMessage(error.message || "Could not load price chart.");
+  }
+}
+
+async function runBacktest() {
+  if (!strategySymbolSelectEl) {
+    return;
+  }
+
+  const symbol = strategySymbolSelectEl.value;
   const fastWindow = Number(document.getElementById("fastWindow").value);
   const slowWindow = Number(document.getElementById("slowWindow").value);
   const initialCash = Number(document.getElementById("initialCash").value);
@@ -422,7 +569,6 @@ async function runBacktest() {
 
   runBacktestButtonEl.disabled = true;
   setStrategyStatus("Running backtest...");
-  setChartMessage("Loading market data...");
 
   try {
     const data = await fetchJson(
@@ -434,18 +580,105 @@ async function runBacktest() {
     }
 
     renderKpis(data.kpis || {});
-    renderStrategyPriceChart(data);
     renderPortfolioChart(data);
     renderTradeTable(data.trades || []);
-    setChartMessage("");
     setStrategyStatus(`Backtest complete for ${symbol}.`);
   } catch (error) {
     console.error("Backtest failed", error);
     setStrategyStatus(error.message || "The backtest could not be completed.", true);
-    setChartMessage(error.message || "No market data available.");
   } finally {
     runBacktestButtonEl.disabled = false;
   }
+}
+
+async function runPrediction() {
+  const topN = Number(topNInput.value);
+  const epochs = Number(epochsInput.value);
+  const trainFrac = Number(trainFracInput.value);
+
+  if (!Number.isFinite(topN) || topN < 1) {
+    setPredictionStatus("Top N must be at least 1.", true);
+    return;
+  }
+  if (!Number.isFinite(epochs) || epochs < 1) {
+    setPredictionStatus("Epochs must be at least 1.", true);
+    return;
+  }
+  if (!Number.isFinite(trainFrac) || trainFrac <= 0 || trainFrac >= 1) {
+    setPredictionStatus("Train fraction must be between 0 and 1.", true);
+    return;
+  }
+
+  runPredictionButtonEl.disabled = true;
+  setPredictionStatus("Building prediction portfolio...");
+
+  try {
+    const data = await fetchJson(
+      `/prediction_portfolio?top_n=${topN}&train_frac=${trainFrac}&epochs=${epochs}`
+    );
+
+    if (!data || !Array.isArray(data.dates)) {
+      throw new Error("The prediction endpoint did not return valid data.");
+    }
+
+    renderPredictionChart(data);
+    setPredictionStatus("Prediction portfolio generated.");
+  } catch (error) {
+    console.error("Prediction portfolio failed", error);
+    setPredictionStatus(error.message || "Prediction portfolio generation failed.", true);
+  } finally {
+    runPredictionButtonEl.disabled = false;
+  }
+}
+
+async function runModelCompare() {
+  if (!compareSymbolSelect) {
+    return;
+  }
+
+  const symbol = compareSymbolSelect.value;
+  const seqLen = Number(seqLenInput.value);
+  const hidden = Number(hiddenInput.value);
+
+  if (!symbol) {
+    setCompareStatus("Please select a symbol.", true);
+    return;
+  }
+  if (!Number.isFinite(seqLen) || seqLen < 1) {
+    setCompareStatus("Sequence length must be at least 1.", true);
+    return;
+  }
+  if (!Number.isFinite(hidden) || hidden < 1) {
+    setCompareStatus("Hidden size must be at least 1.", true);
+    return;
+  }
+
+  runCompareButtonEl.disabled = true;
+  setCompareStatus("Comparing models...");
+
+  try {
+    const data = await fetchJson(
+      `/model_compare?symbol=${encodeURIComponent(symbol)}&seq_len=${seqLen}&hidden=${hidden}`
+    );
+
+    renderComparisonMetrics(data);
+    setCompareStatus(`Model comparison complete for ${symbol}.`);
+  } catch (error) {
+    console.error("Model comparison failed", error);
+    setCompareStatus(error.message || "Model comparison failed.", true);
+  } finally {
+    runCompareButtonEl.disabled = false;
+  }
+}
+
+async function loadPricePanel() {
+  if (!priceSymbolSelectEl) {
+    return;
+  }
+
+  const symbol = priceSymbolSelectEl.value;
+  const window = Number(priceSmaWindowEl.value) || 20;
+  await loadPriceData(symbol, window);
 }
 
 async function loadUniverse() {
@@ -455,7 +688,8 @@ async function loadUniverse() {
       throw new Error("No symbols available.");
     }
 
-    populateSymbolSelect(symbols);
+    populateSymbolSelects(symbols);
+    await loadPricePanel();
     await runBacktest();
   } catch (error) {
     console.error("Universe loading failed", error);
@@ -466,6 +700,7 @@ async function loadUniverse() {
 
 async function initializeDashboard() {
   await checkHealth();
+  setupTabs();
   await loadUniverse();
 }
 
@@ -473,8 +708,24 @@ runBacktestButtonEl.addEventListener("click", () => {
   runBacktest();
 });
 
-symbolSelectEl.addEventListener("change", () => {
-  runBacktest();
+runPredictionButtonEl.addEventListener("click", () => {
+  runPrediction();
+});
+
+runCompareButtonEl.addEventListener("click", () => {
+  runModelCompare();
+});
+
+priceSymbolSelectEl.addEventListener("change", async () => {
+  await loadPricePanel();
+});
+
+priceSmaWindowEl.addEventListener("change", async () => {
+  await loadPricePanel();
+});
+
+strategySymbolSelectEl.addEventListener("change", async () => {
+  await runBacktest();
 });
 
 initializeDashboard();
