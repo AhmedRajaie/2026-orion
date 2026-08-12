@@ -7,33 +7,72 @@ That is what makes "the state you build is the state the agent uses" literally
 true: observation.py stacks these same features over a time window.
 
 Feature order (index matters — it is the contract everything relies on):
-    0: return       daily simple return
-    1: p/sma_fast   (close / SMA_fast) - 1     price vs short average
-    2: p/sma_slow   (close / SMA_slow) - 1     price vs long average
-    3: rsi          RSI / 100                  momentum, scaled to ~[0,1]
-    4: volatility   rolling std of returns     risk
+    0: return        daily simple return
+    1: p/sma_fast    (close / SMA_fast) - 1     price vs short average
+    2: p/sma_slow    (close / SMA_slow) - 1     price vs long average
+    3: rsi           RSI / 100                  momentum, scaled to ~[0,1]
+    4: volatility    rolling std of returns     risk
+    5: macd_hist     MACD line minus its own signal line
+    6: return_5d     5-day cumulative return    medium-term momentum
+    7: return_10d    10-day cumulative return   longer-term momentum
+    8: volume_ratio  today's volume / 20-day average volume
 """
 from __future__ import annotations
 import numpy as np
 from .data_feed import DataFeed
-from .indicators import sma, rsi, rolling_volatility
+from .indicators import sma, ema, rsi, rolling_volatility
 
-FEATURE_NAMES = ["return", "p/sma_fast", "p/sma_slow", "rsi", "volatility"]
+FEATURE_NAMES = ["return", "p/sma_fast", "p/sma_slow", "rsi", "volatility",
+                  "macd_hist", "return_5d", "return_10d", "volume_ratio"]
 N_FEATURES = len(FEATURE_NAMES)
 SMA_FAST, SMA_SLOW = 10, 30
 
 
 def feature_columns(feed: DataFeed, asset: int) -> np.ndarray:
     """(days, N_FEATURES) for one stock, with NaNs where history is too short.
-    GIVEN — the canonical feature computation used everywhere."""
+    GIVEN — the canonical feature computation used everywhere.
+
+    New columns were APPENDED at the end on purpose, not inserted in the
+    middle: existing code elsewhere hardcodes a couple of feature positions
+    (e.g. RSI at index 3, in strategies/mean_reversion.py) — appending keeps
+    every one of those references correct without needing to touch them.
+    """
     close = feed.close[:, asset]
     ret = feed.returns[:, asset]
+    volume = feed.volume[:, asset]
+
+    ema12, ema26 = ema(close, 12), ema(close, 26)
+    macd_line = ema12 - ema26
+    # macd_line itself starts with NaN (ema26 needs 26 days of warm-up).
+    # Feeding that straight into ema() would poison every value forever --
+    # its recursive formula seeds from prices[:window].mean(), and one NaN in
+    # the seed propagates through every subsequent step. Fix: compute the
+    # signal line only on the valid tail, then pad the front back with NaN.
+    first_valid = np.argmax(~np.isnan(macd_line))
+    macd_signal = np.full_like(macd_line, np.nan)
+    macd_signal[first_valid:] = ema(macd_line[first_valid:], 9)
+    macd_hist = macd_line - macd_signal
+
+    ret5 = np.full(feed.n_days, np.nan)
+    ret5[5:] = close[5:] / close[:-5] - 1.0
+    ret10 = np.full(feed.n_days, np.nan)
+    ret10[10:] = close[10:] / close[:-10] - 1.0
+
+    vol_avg20 = np.full(feed.n_days, np.nan)
+    for i in range(19, feed.n_days):
+        vol_avg20[i] = volume[i-19:i+1].mean()
+    volume_ratio = volume / vol_avg20
+
     cols = [
         ret,
         close / sma(close, SMA_FAST) - 1.0,
         close / sma(close, SMA_SLOW) - 1.0,
         rsi(close, 14) / 100.0,
         rolling_volatility(ret, 20),
+        # macd_hist,
+        # ret5,
+        # ret10,
+        # volume_ratio,
     ]
     return np.column_stack(cols)
 
@@ -69,7 +108,7 @@ def build_dataset(feed: DataFeed, asset: int):
     return X.astype(np.float32), y.astype(np.float32)
 
 
-def build_pooled_dataset(feed, split_day: int):
+def build_pooled_dataset(feed: DataFeed, split_day: int):
     """Build a TRAIN/TEST dataset pooled across every stock, split by CALENDAR
     DAY — not by row count after pooling.
 
@@ -142,7 +181,7 @@ def to_sequences(X, y, seq_len: int = 5):
     # ---8<--- end
 
 
-def build_pooled_sequences(feed, split_day: int, seq_len: int = 5):
+def build_pooled_sequences(feed: DataFeed, split_day: int, seq_len: int = 5):
     """Like build_pooled_dataset, but for sequence models (LSTM): sequences
     are built PER STOCK first, then pooled — never the other way around.
 
@@ -185,3 +224,5 @@ def build_pooled_sequences(feed, split_day: int, seq_len: int = 5):
     X_test = np.vstack(Xte_list).astype(np.float32)
     y_test = np.concatenate(yte_list).astype(np.float32)
     return X_train, y_train, X_test, y_test
+
+
