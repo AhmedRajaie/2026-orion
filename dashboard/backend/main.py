@@ -5,6 +5,7 @@ uv run uvicorn dashboard.backend.main:app --reload --port 8000
 """
 
 from pathlib import Path
+import json
 
 import numpy as np
 import pandas as pd
@@ -30,6 +31,7 @@ app.add_middleware(
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "data" / "egx"
 DATA_FILE = REPO_ROOT / "data" / "egx" / "SAUD.csv"
+NN_EQUITY_FILE = REPO_ROOT / "dashboard" / "data" / "nn_equity.json"
 
 
 def get_asset_file(symbol: str) -> Path:
@@ -53,6 +55,76 @@ def get_asset_file(symbol: str) -> Path:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/portfolio/lstm")
+def lstm_portfolio():
+    """Return the optimized LSTM equity curve exported by the Day 3 notebook."""
+    if not NN_EQUITY_FILE.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Run the Day 3 comparison notebook to export nn_equity.json.",
+        )
+
+    payload = json.loads(NN_EQUITY_FILE.read_text())
+    dates = payload.get("dates", [])
+    portfolio = np.asarray(payload.get("portfolio", []), dtype=float)
+    benchmark = np.asarray(payload.get("benchmark", []), dtype=float)
+    if not dates or len(dates) != len(portfolio) or len(dates) != len(benchmark):
+        raise HTTPException(status_code=500, detail="Invalid LSTM equity export.")
+
+    initial_cash = 1000.0
+    portfolio_values = portfolio * initial_cash
+    benchmark_values = benchmark * initial_cash
+    running_peak = np.maximum.accumulate(portfolio_values)
+    drawdown_percent = (portfolio_values - running_peak) / running_peak * 100
+    daily_returns = np.diff(portfolio, prepend=1.0)
+    daily_returns[1:] = portfolio[1:] / portfolio[:-1] - 1.0
+
+    hyperparameters = payload.get("hyperparameters", {})
+    equity_curve = [
+        {
+            "date": date,
+            "portfolio_value": round(float(value), 2),
+            "benchmark_value": round(float(benchmark_value), 2),
+            "running_peak": round(float(peak), 2),
+            "drawdown_percent": round(float(drawdown), 4),
+        }
+        for date, value, benchmark_value, peak, drawdown in zip(
+            dates,
+            portfolio_values,
+            benchmark_values,
+            running_peak,
+            drawdown_percent,
+        )
+    ]
+
+    return {
+        "strategy": payload.get("strategy", "My LSTM"),
+        "description": (
+            "Optimized LSTM: select the strongest positive forecasts, hold an "
+            "equal-weight portfolio, and rebalance every ten trading days."
+        ),
+        "initial_cash_egp": initial_cash,
+        "final_portfolio_value_egp": round(float(portfolio_values[-1]), 2),
+        "benchmark_final_value_egp": round(float(benchmark_values[-1]), 2),
+        "total_return_percent": round(float((portfolio[-1] - 1) * 100), 2),
+        "benchmark_return_percent": round(float((benchmark[-1] - 1) * 100), 2),
+        "max_drawdown_percent": round(abs(float(drawdown_percent.min())), 2),
+        "max_drawdown_egp": round(float((running_peak - portfolio_values).max()), 2),
+        "sharpe": round(float(sharpe(daily_returns)), 3),
+        "commission_percent": round(float(payload.get("commission", 0)) * 100, 3),
+        "top_k": int(hyperparameters.get("top_k", 8)),
+        "threshold_percent": round(float(hyperparameters.get("threshold", 0)) * 100, 4),
+        "rebalance_days": int(hyperparameters.get("rebalance_days", 10)),
+        "validation_sharpe": round(float(hyperparameters.get("validation_sharpe", 0)), 3),
+        "validation_return_percent": round(
+            float(hyperparameters.get("validation_return", 0)) * 100, 2
+        ),
+        "start_date": dates[0],
+        "end_date": dates[-1],
+        "equity_curve": equity_curve,
+    }
 
 @app.get("/universe")
 def get_universe():

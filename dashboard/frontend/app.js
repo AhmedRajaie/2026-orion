@@ -180,6 +180,123 @@ function displayMeanReversionMetrics(data) {
 }
 
 
+function displayLstmMetrics(data) {
+  document.getElementById("final-value").textContent =
+    formatEGP(data.final_portfolio_value_egp);
+  const returnElement = document.getElementById("total-return");
+  returnElement.textContent = formatPercent(data.total_return_percent);
+  setReturnColor(returnElement, data.total_return_percent);
+  document.getElementById("max-drawdown").textContent =
+    `${formatEGP(data.max_drawdown_egp)} (${formatPercent(data.max_drawdown_percent)})`;
+  document.getElementById("operations-label").textContent = "Portfolio rule";
+  document.getElementById("operations").textContent = `Top ${data.top_k}`;
+  document.getElementById("operations-note").textContent =
+    `Rebalanced every ${data.rebalance_days} trading days`;
+  setCard(
+    "comparison",
+    formatEGP(data.benchmark_final_value_egp),
+    "Equal-weight benchmark",
+    `Benchmark return: ${formatPercent(data.benchmark_return_percent)}`,
+  );
+  setCard(
+    "cost",
+    formatPercent(data.commission_percent),
+    "Turnover commission",
+    `Strategy Sharpe: ${data.sharpe.toFixed(3)}`,
+  );
+}
+
+
+function renderLstmSummaryChart(data) {
+  const canvas = document.getElementById("price-chart");
+  priceChart = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: ["My optimized LSTM", "Equal-weight benchmark"],
+      datasets: [{
+        label: "Final portfolio value (EGP)",
+        data: [data.final_portfolio_value_egp, data.benchmark_final_value_egp],
+        backgroundColor: ["#60a5fa", "#f59e0b"],
+        borderRadius: 8,
+      }],
+    },
+    options: chartOptions("Final value (EGP)", false),
+  });
+}
+
+
+function renderLstmEquityChart(data) {
+  const canvas = document.getElementById("equity-chart");
+  const equity = data.equity_curve;
+  equityChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: equity.map((row) => row.date),
+      datasets: [
+        {
+          label: "My optimized LSTM",
+          data: equity.map((row) => row.portfolio_value),
+          borderColor: "#60a5fa",
+          backgroundColor: "rgba(96, 165, 250, 0.12)",
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 0,
+        },
+        {
+          label: "Equal-weight benchmark",
+          data: equity.map((row) => row.benchmark_value),
+          borderColor: "#f59e0b",
+          borderDash: [6, 6],
+          borderWidth: 1.5,
+          pointRadius: 0,
+        },
+      ],
+    },
+    options: chartOptions("Portfolio value (EGP)"),
+  });
+  attachZoomReset(canvas, () => equityChart);
+}
+
+
+function renderLstmDrawdownChart(data) {
+  const canvas = document.getElementById("drawdown-chart");
+  const equity = data.equity_curve;
+  drawdownChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: equity.map((row) => row.date),
+      datasets: [{
+        label: "LSTM drawdown",
+        data: equity.map((row) => row.drawdown_percent),
+        borderColor: "#ff6b6b",
+        backgroundColor: "rgba(255, 107, 107, 0.3)",
+        fill: true,
+        borderWidth: 1.5,
+        pointRadius: 0,
+      }],
+    },
+    options: chartOptions("Drawdown (%)"),
+  });
+  attachZoomReset(canvas, () => drawdownChart);
+}
+
+
+function renderLstmParameters(data) {
+  document.getElementById("table-head").innerHTML =
+    "<tr><th>Parameter</th><th>Selected value</th><th>Meaning</th></tr>";
+  const rows = [
+    ["Stocks held", data.top_k, "Highest positive LSTM forecasts"],
+    ["Rebalance interval", `${data.rebalance_days} days`, "Reduces turnover and noise"],
+    ["Prediction threshold", formatPercent(data.threshold_percent), "Minimum forecast required"],
+    ["Commission", formatPercent(data.commission_percent), "Charged on portfolio turnover"],
+    ["Validation Sharpe", data.validation_sharpe.toFixed(3), "Used to select the parameters"],
+  ];
+  document.getElementById("trade-table").innerHTML = rows.map((row) =>
+    `<tr><td>${row[0]}</td><td class="buy">${row[1]}</td><td>${row[2]}</td></tr>`
+  ).join("");
+}
+
+
 function renderSmaPriceChart(indicators, trades) {
   const canvas = document.getElementById("price-chart");
   const labels = indicators.data.map((row) => row.date);
@@ -528,11 +645,50 @@ async function loadMeanReversion() {
 }
 
 
+async function loadLstm() {
+  try {
+    setStatus("Loading optimized LSTM…");
+    strategySelect.disabled = true;
+    destroyCharts();
+    const response = await fetch(`${API_BASE}/portfolio/lstm`);
+    if (!response.ok) throw new Error("Could not load optimized LSTM export.");
+    const data = await response.json();
+    displayLstmMetrics(data);
+    renderLstmSummaryChart(data);
+    renderLstmEquityChart(data);
+    renderLstmDrawdownChart(data);
+    renderLstmParameters(data);
+    document.getElementById("primary-chart-title").textContent =
+      "Optimized LSTM vs benchmark · final value";
+    document.getElementById("equity-chart-title").textContent =
+      "Optimized LSTM equity curve vs benchmark";
+    document.getElementById("drawdown-chart-title").textContent =
+      "Optimized LSTM drawdown";
+    document.getElementById("table-title").textContent = "Selected hyperparameters";
+    assetDescription.textContent =
+      `34 assets · top ${data.top_k} · rebalance every ${data.rebalance_days} days · ` +
+      `${formatPercent(data.commission_percent)} commission`;
+    insightBanner.textContent =
+      `${data.description} This chart covers ${data.start_date} through ${data.end_date}. ` +
+      `The notebook's walk-forward tests remain the honest robustness verdict.`;
+    setStatus("Optimized LSTM: ready", "ok");
+  } catch (error) {
+    console.error(error);
+    setStatus("Optimized LSTM failed", "error");
+  } finally {
+    strategySelect.disabled = false;
+  }
+}
+
+
 async function switchStrategy() {
   const mode = strategySelect.value;
   if (mode === "mean-reversion") {
     assetControl.style.display = "none";
     await loadMeanReversion();
+  } else if (mode === "lstm") {
+    assetControl.style.display = "none";
+    await loadLstm();
   } else {
     assetControl.style.display = "flex";
     await loadSmaAsset(assetSelect.value);
