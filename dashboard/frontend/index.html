@@ -1,19 +1,400 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <title>Trading Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+  <title>EGX Strategy Lab</title>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+
   <style>
-    body { font-family: system-ui, sans-serif; margin: 24px; background:#0b1220; color:#e6edf3; }
-    .panel { background:#111a2b; border-radius:10px; padding:16px; margin-bottom:20px; }
-    h1 { font-weight:600; }
+    :root {
+      --background: #08111f;
+      --panel: #101c2e;
+      --panel-light: #15243a;
+      --border: #263750;
+      --text: #e8eef7;
+      --muted: #91a3ba;
+      --green: #32d583;
+      --red: #941313;
+      --blue: #60a5fa;
+      --orange: #f59e0b;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(
+          circle at top right,
+          #12315a 0,
+          transparent 30%
+        ),
+        var(--background);
+      font-family: Inter, system-ui, sans-serif;
+    }
+
+    .container {
+      width: min(1400px, 94%);
+      margin: auto;
+      padding: 40px 0;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+    }
+
+    .header p {
+      margin: 8px 0 0;
+      color: var(--muted);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-actions label {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    #asset-select,
+    #strategy-select {
+      min-width: 150px;
+      padding: 10px 38px 10px 14px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    #asset-select:focus,
+    #strategy-select:focus {
+      outline: 2px solid var(--blue);
+      outline-offset: 2px;
+    }
+
+    #asset-select:disabled,
+    #strategy-select:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+
+    .status {
+      padding: 10px 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .status.ok {
+      color: var(--green);
+      border-color: var(--green);
+    }
+
+    .status.error {
+      color: var(--red);
+      border-color: var(--red);
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .card,
+    .panel {
+      background: rgba(16, 28, 46, 0.94);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.2);
+    }
+
+    .card {
+      padding: 20px;
+    }
+
+    .card .label {
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .card .value {
+      font-size: 1.65rem;
+      font-weight: 700;
+    }
+
+    .card .note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .insight {
+      margin-bottom: 20px;
+      padding: 16px 18px;
+      color: #cfe2ff;
+      background: rgba(96, 165, 250, 0.1);
+      border: 1px solid rgba(96, 165, 250, 0.35);
+      border-radius: 14px;
+      line-height: 1.55;
+    }
+
+    .panel {
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .panel h2 {
+      margin: 0 0 18px;
+      font-size: 1.1rem;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 420px;
+    }
+
+    .chart-container.small {
+      height: 300px;
+    }
+
+    .positive {
+      color: var(--green);
+    }
+
+    .negative {
+      color: var(--red);
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+    }
+
+    .buy {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    .sell {
+      color: var(--red);
+      font-weight: 700;
+    }
+
+    @media (max-width: 900px) {
+      .cards {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .cards {
+        grid-template-columns: 1fr;
+      }
+
+      .header-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      #asset-select {
+        width: 100%;
+      }
+
+      .control-group,
+      #strategy-select {
+        width: 100%;
+      }
+    }
   </style>
 </head>
+
 <body>
-  <h1>Trading Dashboard</h1>
-  <div class="panel" id="status">connecting…</div>
-  <!-- TASK_02+ : add <canvas> panels for price, indicators, equity curve -->
-  <script src="app.js"></script>
+  <main class="container">
+    <header class="header">
+      <div>
+        <h1>EGX Strategy Lab</h1>
+
+        <p id="asset-description">
+          Explore single-asset trends and an all-market mean-reversion portfolio.
+        </p>
+      </div>
+
+      <div class="header-actions">
+        <div class="control-group">
+          <label for="strategy-select">Strategy</label>
+
+          <select id="strategy-select">
+            <option value="sma">SMA 9/20 · single asset</option>
+            <option value="mean-reversion">5-day mean reversion · 34 assets</option>
+          </select>
+        </div>
+
+        <div class="control-group" id="asset-control">
+          <label for="asset-select">Asset</label>
+
+          <select id="asset-select" disabled>
+            <option value="">Loading assets…</option>
+          </select>
+        </div>
+
+        <div class="status" id="status">
+          Connecting…
+        </div>
+      </div>
+    </header>
+
+    <section class="insight" id="insight-banner">
+      Loading strategy data…
+    </section>
+
+    <section class="cards">
+      <article class="card">
+        <div class="label">Final portfolio</div>
+        <div class="value" id="final-value">—</div>
+      </article>
+
+      <article class="card">
+        <div class="label">Total return</div>
+        <div class="value" id="total-return">—</div>
+      </article>
+
+      <article class="card">
+        <div class="label">Maximum drawdown</div>
+        <div class="value negative" id="max-drawdown">—</div>
+      </article>
+
+      <article class="card">
+        <div class="label" id="operations-label">Buy / sell operations</div>
+        <div class="value" id="operations">—</div>
+        <div class="note" id="operations-note"></div>
+      </article>
+
+      <article class="card">
+        <div class="label" id="comparison-label">Benchmark</div>
+        <div class="value" id="comparison-value">—</div>
+        <div class="note" id="comparison-note"></div>
+      </article>
+
+      <article class="card">
+        <div class="label" id="cost-label">Commission impact</div>
+        <div class="value" id="cost-value">—</div>
+        <div class="note" id="cost-note"></div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2 id="primary-chart-title">Price and moving averages</h2>
+
+      <div class="chart-container">
+        <canvas id="price-chart"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 id="equity-chart-title">Portfolio equity curve</h2>
+
+      <div class="chart-container small">
+        <canvas id="equity-chart"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 id="drawdown-chart-title">Portfolio drawdown</h2>
+
+      <div class="chart-container small">
+        <canvas id="drawdown-chart"></canvas>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 id="table-title">Trade history</h2>
+
+      <div class="table-wrapper">
+        <table>
+          <thead id="table-head">
+            <tr>
+              <th>Operation</th>
+              <th>Signal date</th>
+              <th>Execution date</th>
+              <th>Price</th>
+              <th>Shares</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+
+          <tbody id="trade-table">
+            <tr>
+              <td colspan="6">
+                Select an asset to load its trades.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js?v=11"></script>
 </body>
 </html>

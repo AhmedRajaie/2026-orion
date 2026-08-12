@@ -10,6 +10,41 @@ from __future__ import annotations
 import numpy as np
 
 
+def weekly_loser_weights(
+    observation: np.ndarray,
+    lookback_days: int = 5,
+) -> np.ndarray:
+    """Buy recent losers, sized in proportion to their five-day decline.
+
+    This is the long-only version of the strategy described in the supplied
+    video. Feature 0 of ``observation`` contains daily simple returns. We
+    compound the latest ``lookback_days`` returns to obtain each asset's recent
+    return, keep only negative returns, and normalize their magnitudes into
+    portfolio weights. Recent winners receive zero weight because the Week 1
+    simulator intentionally does not support short positions.
+
+    If no asset declined during the lookback period, return all-zero weights so
+    the unallocated portfolio remains in cash.
+    """
+    observation = np.asarray(observation, dtype=float)
+    n_assets = observation.shape[0]
+
+    if lookback_days < 1:
+        raise ValueError("lookback_days must be at least 1")
+    if observation.shape[1] < lookback_days:
+        return np.zeros(n_assets)
+
+    recent_returns = observation[:, -lookback_days:, 0]
+    period_returns = np.prod(1.0 + recent_returns, axis=1) - 1.0
+
+    loser_strength = np.maximum(-period_returns, 0.0)
+    total_strength = loser_strength.sum()
+    if total_strength == 0:
+        return np.zeros(n_assets)
+
+    return loser_strength / total_strength
+
+
 def rsi_mean_reversion_weights(observation: np.ndarray, oversold: float = 30.0, top_k: int = 2) -> np.ndarray:
     """Hold the most OVERSOLD stocks — the ones RSI says have been beaten down
     the hardest — betting they bounce back toward normal.
