@@ -1,163 +1,221 @@
-// Dashboard frontend for the weekly contrarian strategy.
 const API = "http://localhost:8000";
-const WEEKLY_CONTRARIAN_STRATEGY_ID = "weekly_contrarian";
-const BEST_NEURAL_STRATEGY_ID = "best_neural";
-const DEFAULT_TRADE_COLUMNS = [
-  { key: "operation", label: "Operation" },
-  { key: "date", label: "Date" },
-  { key: "symbol", label: "Symbol" },
-  { key: "signal_return", label: "Signal return" },
-  { key: "price", label: "Price" },
-  { key: "notional", label: "Notional" },
-  { key: "shares", label: "Shares" },
-  { key: "cash_after", label: "Cash after" },
-  { key: "position_after", label: "Position after" },
+const EMPTY_VALUE = "--";
+const STRATEGY_KEYS = ["mlp", "lstm", "sma", "video"];
+
+const STRATEGIES = {
+  mlp: {
+    shortLabel: "MLP",
+    label: "MLP Portfolio",
+    tabId: "strategyTabMLP",
+    panelId: "strategyPanelMLP",
+    color: "#5ca2ff",
+    note: "Week 2 Day 3 best MLP portfolio with honest out-of-sample predictions.",
+  },
+  lstm: {
+    shortLabel: "LSTM",
+    label: "LSTM Portfolio",
+    tabId: "strategyTabLSTM",
+    panelId: "strategyPanelLSTM",
+    color: "#2dd4bf",
+    note: "Week 2 Day 3 strongest LSTM portfolio variant, kept out of sample.",
+  },
+  sma: {
+    shortLabel: "SMA",
+    label: "SMA Portfolio",
+    tabId: "strategyTabSMA",
+    panelId: "strategyPanelSMA",
+    color: "#60a5fa",
+    note: "The final multi-asset SMA crossover strategy from Week 1.",
+  },
+  video: {
+    shortLabel: "Video Strategy",
+    label: "Video Strategy",
+    tabId: "strategyTabVideo",
+    panelId: "strategyPanelVideo",
+    color: "#f472b6",
+    note: "The final Week 1 TikTok contrarian strategy with fixed EGP trade sizes.",
+  },
+};
+
+const KPI_DEFINITIONS = [
+  { key: "initial_portfolio_value", label: "Initial portfolio value", primary: false, formatter: formatCurrency },
+  { key: "final_portfolio_value", label: "Final portfolio value", primary: true, formatter: formatCurrency },
+  { key: "profit_loss_egp", label: "Profit / loss", primary: false, formatter: formatCurrency },
+  { key: "total_return_pct", label: "Total return", primary: true, formatter: formatPercent },
+  { key: "benchmark_return_pct", label: "Benchmark return", primary: false, formatter: formatPercent },
+  { key: "excess_return_pct", label: "Excess return vs benchmark", primary: false, formatter: formatPercent },
+  { key: "sharpe_ratio", label: "Sharpe ratio", primary: true, formatter: (value) => formatNumber(value, 3) },
+  { key: "maximum_drawdown_pct", label: "Maximum drawdown", primary: true, formatter: formatPercent },
+  { key: "maximum_drawdown_egp", label: "Maximum drawdown (EGP)", primary: false, formatter: formatCurrency },
+  { key: "current_drawdown_pct", label: "Current drawdown", primary: false, formatter: formatPercent },
+  { key: "total_buy_operations", label: "Total buy operations", primary: false, formatter: formatInteger },
+  { key: "total_sell_operations", label: "Total sell operations", primary: false, formatter: formatInteger },
+  { key: "total_operations", label: "Total operations", primary: false, formatter: formatInteger },
+  { key: "market_exposure_pct", label: "Market exposure", primary: false, formatter: formatPercent },
+  { key: "current_portfolio_state", label: "Current portfolio state", primary: false, formatter: formatText },
+  { key: "positions_currently_held", label: "Positions currently held", primary: false, formatter: formatInteger },
 ];
 
-let equityChart = null;
-let priceChart = null;
-let operationsChart = null;
+let activeStrategy = "mlp";
+let selectedDateRange = "ALL";
 let initializationStarted = false;
 let activeRequestToken = 0;
-let selectedUniverse = "small";
-let selectedStrategy = WEEKLY_CONTRARIAN_STRATEGY_ID;
-let currentBacktestData = null;
-let selectedDateRange = "ALL";
-let currentTradeColumns = DEFAULT_TRADE_COLUMNS;
+let strategyData = createStrategyState(null);
+let strategyErrors = createStrategyState(null);
+let strategyMeta = null;
+let chartInstances = createChartState();
+
+function createStrategyState(initialValue) {
+  return Object.fromEntries(STRATEGY_KEYS.map((strategy) => [strategy, initialValue]));
+}
+
+function createChartState() {
+  return Object.fromEntries(
+    STRATEGY_KEYS.map((strategy) => [
+      strategy,
+      {
+        portfolio: null,
+        equity: null,
+        drawdown: null,
+      },
+    ])
+  );
+}
 
 function setStatusMessage(message) {
-  const statusElement = document.getElementById("status");
-  if (statusElement) {
-    statusElement.textContent = message;
+  const element = document.getElementById("status");
+  if (element) {
+    element.textContent = message;
   }
 }
 
-function setStrategyStatus(message) {
-  const statusElement = document.getElementById("strategyStatus");
-  if (statusElement) {
-    statusElement.textContent = message;
+function setDashboardStatus(message) {
+  const element = document.getElementById("dashboardStatus");
+  if (element) {
+    element.textContent = message;
   }
 }
 
-function isNeuralStrategySelected() {
-  return selectedStrategy === BEST_NEURAL_STRATEGY_ID;
+function getPanel(strategy) {
+  return document.getElementById(STRATEGIES[strategy].panelId);
 }
 
-function getStrategyDisplayName() {
-  return isNeuralStrategySelected()
-    ? "Best Neural Strategy"
-    : "Weekly Contrarian Strategy";
+function getPanelRole(strategy, role) {
+  const panel = getPanel(strategy);
+  return panel ? panel.querySelector(`[data-role="${role}"]`) : null;
 }
 
-function getStrategyPanelNote() {
-  if (isNeuralStrategySelected()) {
-    return "Precomputed Week 2 Day 3 neural portfolio on the full course universe.";
-  }
-  return "Portfolio: selected universe. Price chart: selected stock.";
+function getKpiValueElement(strategy, key) {
+  const panel = getPanel(strategy);
+  return panel ? panel.querySelector(`[data-kpi="${key}"]`) : null;
 }
 
-function defaultStrategyStatus() {
-  if (isNeuralStrategySelected()) {
-    return "Portfolio: full universe. Price chart: selected stock diagnostics.";
-  }
-  return "Portfolio: selected universe. Price chart: selected stock.";
-}
-
-function setTradeColumns(columns) {
-  currentTradeColumns = Array.isArray(columns) && columns.length
-    ? columns
-    : DEFAULT_TRADE_COLUMNS;
-
-  const headerRow = document.getElementById("tradeTableHeaderRow");
-  if (!headerRow) {
+function buildStrategyPanels() {
+  const host = document.getElementById("strategyPanels");
+  const template = document.getElementById("strategyPanelTemplate");
+  if (!host || !template) {
     return;
   }
 
-  headerRow.replaceChildren();
-  currentTradeColumns.forEach((column) => {
-    const th = document.createElement("th");
-    th.textContent = column.label;
-    headerRow.appendChild(th);
-  });
-}
+  host.replaceChildren();
 
-function updateStrategyControlState() {
-  const title = document.getElementById("strategyPanelTitle");
-  const note = document.getElementById("strategyPanelNote");
-  const universeSelect = document.getElementById("universeSelect");
-  const strategySelect = document.getElementById("strategySelect");
-  const runButton = document.getElementById("runBacktestButton");
-  const contrarianControls = document.querySelectorAll(".contrarian-only");
+  STRATEGY_KEYS.forEach((strategy) => {
+    const fragment = template.content.cloneNode(true);
+    const panel = fragment.querySelector("[data-role='strategyPanel']");
+    const kpiGrid = fragment.querySelector("[data-role='kpiGrid']");
+    const title = fragment.querySelector("[data-role='strategyTitle']");
+    const note = fragment.querySelector("[data-role='strategyNote']");
 
-  if (strategySelect) {
-    strategySelect.value = selectedStrategy;
-  }
-  if (title) {
-    title.textContent = getStrategyDisplayName();
-  }
-  if (note) {
-    note.textContent = getStrategyPanelNote();
-  }
-  if (runButton) {
-    runButton.textContent = isNeuralStrategySelected() ? "Load strategy" : "Run backtest";
-  }
+    panel.id = STRATEGIES[strategy].panelId;
+    panel.dataset.strategy = strategy;
+    panel.hidden = strategy !== activeStrategy;
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", STRATEGIES[strategy].tabId);
 
-  contrarianControls.forEach((element) => {
-    element.hidden = isNeuralStrategySelected();
-  });
-
-  if (universeSelect) {
-    universeSelect.disabled = isNeuralStrategySelected();
-    if (isNeuralStrategySelected()) {
-      universeSelect.value = "full";
-    } else {
-      universeSelect.value = selectedUniverse;
+    if (title) {
+      title.textContent = STRATEGIES[strategy].label;
     }
+    if (note) {
+      note.textContent = STRATEGIES[strategy].note;
+    }
+
+    buildKpiGrid(kpiGrid);
+    host.appendChild(fragment);
+  });
+}
+
+function buildKpiGrid(container) {
+  if (!container) {
+    return;
+  }
+
+  container.replaceChildren();
+  KPI_DEFINITIONS.forEach((definition) => {
+    const card = document.createElement("div");
+    card.className = definition.primary ? "kpi-card primary" : "kpi-card";
+
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = definition.label;
+
+    const value = document.createElement("div");
+    value.className = "value";
+    value.dataset.kpi = definition.key;
+    value.textContent = EMPTY_VALUE;
+
+    card.appendChild(label);
+    card.appendChild(value);
+    container.appendChild(card);
+  });
+}
+
+function destroyChart(chart) {
+  if (chart) {
+    chart.destroy();
   }
 }
 
-function destroyChart(chartInstance) {
-  if (chartInstance) {
-    chartInstance.destroy();
+function destroyStrategyCharts(strategy) {
+  const bucket = chartInstances[strategy];
+  if (!bucket) {
+    return;
   }
+  destroyChart(bucket.portfolio);
+  destroyChart(bucket.equity);
+  destroyChart(bucket.drawdown);
+  bucket.portfolio = null;
+  bucket.equity = null;
+  bucket.drawdown = null;
 }
 
 function destroyAllCharts() {
-  destroyChart(equityChart);
-  destroyChart(priceChart);
-  destroyChart(operationsChart);
-  equityChart = null;
-  priceChart = null;
-  operationsChart = null;
+  STRATEGY_KEYS.forEach((strategy) => destroyStrategyCharts(strategy));
 }
 
-function clearKpiValues() {
-  const ids = [
-    "kpiTotalReturn",
-    "kpiSharpe",
-    "kpiMaxDrawdown",
-    "kpiFinalValue",
-    "kpiProfitLoss",
-    "kpiBenchmarkReturn",
-    "kpiExcessReturn",
-    "kpiBuyOperations",
-    "kpiSellOperations",
-    "kpiSkippedBuys",
-    "kpiOpenPositions",
-  ];
+function clearDetailList(container, message) {
+  if (!container) {
+    return;
+  }
 
-  ids.forEach((id) => {
-    const element = document.getElementById(id);
-    if (!element) {
-      return;
-    }
-    element.textContent = "â€”";
-    element.classList.remove("positive", "negative");
-  });
+  container.replaceChildren();
+  const row = document.createElement("div");
+  row.className = "detail-row";
+
+  const label = document.createElement("span");
+  label.className = "label";
+  label.textContent = "Status";
+
+  const value = document.createElement("span");
+  value.className = "value";
+  value.textContent = message || EMPTY_VALUE;
+
+  row.appendChild(label);
+  row.appendChild(value);
+  container.appendChild(row);
 }
 
-function showEmptyTradeTable(message) {
-  const tbody = document.getElementById("tradeTableBody");
+function showEmptyTradeTable(strategy, message) {
+  const tbody = getPanelRole(strategy, "tradeTableBody");
   if (!tbody) {
     return;
   }
@@ -165,72 +223,276 @@ function showEmptyTradeTable(message) {
   tbody.replaceChildren();
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = currentTradeColumns.length;
+  cell.colSpan = 7;
   cell.className = "empty-state";
   cell.textContent = message;
   row.appendChild(cell);
   tbody.appendChild(row);
 }
 
-function clearDashboardResults(message) {
-  currentBacktestData = null;
-  destroyAllCharts();
-  clearKpiValues();
-  setTradeColumns(DEFAULT_TRADE_COLUMNS);
+function clearStrategyPanel(strategy, message) {
+  const panel = getPanel(strategy);
+  if (!panel) {
+    return;
+  }
+
+  panel.dataset.loading = "false";
+  setPanelStatus(strategy, message || "Run strategies to load this tab.", false);
+
+  KPI_DEFINITIONS.forEach((definition) => {
+    const value = getKpiValueElement(strategy, definition.key);
+    if (!value) {
+      return;
+    }
+    value.textContent = EMPTY_VALUE;
+    value.classList.remove("positive", "negative");
+  });
+
+  clearDetailList(getPanelRole(strategy, "parameterSummary"), "No run loaded");
+  clearDetailList(getPanelRole(strategy, "strategyDetails"), "No run loaded");
+  showEmptyTradeTable(strategy, message || "Run strategies to load trade history.");
+  destroyStrategyCharts(strategy);
+}
+
+function setPanelStatus(strategy, message, isError) {
+  const status = getPanelRole(strategy, "panelStatus");
+  if (!status) {
+    return;
+  }
+  status.textContent = message;
+  status.classList.toggle("error", Boolean(isError));
+}
+
+function setStrategyLoading(strategy, message) {
+  const panel = getPanel(strategy);
+  if (!panel) {
+    return;
+  }
+  panel.dataset.loading = "true";
+  setPanelStatus(strategy, message, false);
+  KPI_DEFINITIONS.forEach((definition) => {
+    const value = getKpiValueElement(strategy, definition.key);
+    if (!value) {
+      return;
+    }
+    value.textContent = EMPTY_VALUE;
+    value.classList.remove("positive", "negative");
+  });
+  clearDetailList(getPanelRole(strategy, "parameterSummary"), "Loading...");
+  clearDetailList(getPanelRole(strategy, "strategyDetails"), "Loading...");
+  showEmptyTradeTable(strategy, "Loading trades...");
+  destroyStrategyCharts(strategy);
+}
+
+function setActiveStrategy(strategy) {
+  activeStrategy = strategy;
+
+  STRATEGY_KEYS.forEach((key) => {
+    const tab = document.getElementById(STRATEGIES[key].tabId);
+    const panel = getPanel(key);
+    const isActive = key === strategy;
+
+    if (tab) {
+      tab.classList.toggle("active", isActive);
+      tab.setAttribute("aria-selected", isActive ? "true" : "false");
+    }
+    if (panel) {
+      panel.hidden = !isActive;
+    }
+  });
+
+  renderStrategyPanel(strategy);
   updateVisibleDateRangeLabel();
-  showEmptyTradeTable(message);
 }
 
-function getVisibleDateRangeText(startIndex, endIndex, totalPoints) {
-  if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex) || totalPoints <= 0) {
-    return "Showing all available dates";
-  }
-
-  const labels = currentBacktestData && Array.isArray(currentBacktestData.dates)
-    ? currentBacktestData.dates
-    : [];
-  const startLabel = labels[startIndex];
-  const endLabel = labels[endIndex];
-
-  if (!startLabel || !endLabel) {
-    return `Showing ${startIndex + 1}-${endIndex + 1} of ${totalPoints} dates`;
-  }
-
-  return `Showing ${startLabel} to ${endLabel}`;
+function setDateRangeSelection(range) {
+  selectedDateRange = range;
+  document.querySelectorAll(".date-range-button").forEach((button) => {
+    const isActive = button.getAttribute("data-range") === range;
+    button.classList.toggle("active", isActive);
+  });
+  renderStrategyPanel(activeStrategy);
+  updateVisibleDateRangeLabel();
 }
 
-function getVisibleDateRange() {
-  const labels = currentBacktestData && Array.isArray(currentBacktestData.dates)
-    ? currentBacktestData.dates
-    : [];
+function attachEventListeners() {
+  const runButton = document.getElementById("runDashboardButton");
+  const universeSelect = document.getElementById("universeSelect");
 
-  if (!labels.length) {
-    return { startIndex: 0, endIndex: 0, text: "Showing all available dates" };
+  if (runButton) {
+    runButton.addEventListener("click", runStrategies);
   }
 
-  const total = labels.length;
-  const endIndex = total - 1;
+  if (universeSelect) {
+    universeSelect.addEventListener("change", async () => {
+      await loadStrategyMetadata();
+      setDashboardStatus("Universe changed. Click Run strategies to apply the new settings.");
+    });
+  }
+
+  document.querySelectorAll(".strategy-tab").forEach((button) => {
+    button.addEventListener("click", () => {
+      setActiveStrategy(button.getAttribute("data-strategy") || "mlp");
+    });
+  });
+
+  document.querySelectorAll(".date-range-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      setDateRangeSelection(button.getAttribute("data-range") || "ALL");
+    });
+  });
+
+  const startDateInput = document.getElementById("portfolioStartDate");
+  const capitalInput = document.getElementById("initialCapital");
+  [startDateInput, capitalInput].forEach((input) => {
+    if (!input) {
+      return;
+    }
+    input.addEventListener("change", () => {
+      setDashboardStatus("Parameters changed. Click Run strategies to refresh all four tabs.");
+    });
+  });
+}
+
+function getSelectedUniverse() {
+  const select = document.getElementById("universeSelect");
+  return select ? select.value : "full";
+}
+
+function getSelectedStartDate() {
+  const input = document.getElementById("portfolioStartDate");
+  return input ? input.value : "";
+}
+
+function getSelectedInitialCapital() {
+  const input = document.getElementById("initialCapital");
+  return input ? Number.parseFloat(input.value) : NaN;
+}
+
+function formatNumber(value, digits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return EMPTY_VALUE;
+  }
+  return numeric.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatCurrency(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return EMPTY_VALUE;
+  }
+  return `${numeric.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} EGP`;
+}
+
+function formatPercent(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return EMPTY_VALUE;
+  }
+  return `${numeric.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}%`;
+}
+
+function formatInteger(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return EMPTY_VALUE;
+  }
+  return Math.round(numeric).toLocaleString();
+}
+
+function formatText(value) {
+  if (value === null || value === undefined || value === "") {
+    return EMPTY_VALUE;
+  }
+  return String(value);
+}
+
+function formatBoolean(value) {
+  if (value === null || value === undefined) {
+    return EMPTY_VALUE;
+  }
+  return value ? "Yes" : "No";
+}
+
+function parseIsoDate(value) {
+  if (!value || typeof value !== "string") {
+    return null;
+  }
+  const parts = value.split("-").map((part) => Number.parseInt(part, 10));
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+  const parsed = new Date(parts[0], parts[1] - 1, parts[2]);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatDateDisplay(value) {
+  if (!value) {
+    return EMPTY_VALUE;
+  }
+  const parsed = parseIsoDate(value);
+  if (!parsed) {
+    return String(value);
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(parsed);
+}
+
+function universeLabel(universe) {
+  if (universe === "small") {
+    return "Small universe";
+  }
+  if (universe === "full") {
+    return "Full universe";
+  }
+  return formatText(universe);
+}
+
+function getVisibleRange(data) {
+  if (!data || !Array.isArray(data.dates) || data.dates.length === 0) {
+    return {
+      startIndex: 0,
+      endIndex: 0,
+      text: "Visible chart window: waiting for strategy data.",
+    };
+  }
+
+  const labels = data.dates;
+  const endIndex = labels.length - 1;
   let startIndex = 0;
 
   if (selectedDateRange !== "ALL") {
-    const latestDate = new Date(labels[endIndex]);
-    if (!Number.isNaN(latestDate.getTime())) {
-      const cutoffDate = new Date(latestDate);
+    const latestDate = parseIsoDate(labels[endIndex]);
+    if (latestDate) {
+      const cutoff = new Date(latestDate);
       if (selectedDateRange === "1M") {
-        cutoffDate.setMonth(cutoffDate.getMonth() - 1);
+        cutoff.setMonth(cutoff.getMonth() - 1);
       } else if (selectedDateRange === "3M") {
-        cutoffDate.setMonth(cutoffDate.getMonth() - 3);
+        cutoff.setMonth(cutoff.getMonth() - 3);
       } else if (selectedDateRange === "6M") {
-        cutoffDate.setMonth(cutoffDate.getMonth() - 6);
+        cutoff.setMonth(cutoff.getMonth() - 6);
       } else if (selectedDateRange === "1Y") {
-        cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
+        cutoff.setFullYear(cutoff.getFullYear() - 1);
       } else if (selectedDateRange === "3Y") {
-        cutoffDate.setFullYear(cutoffDate.getFullYear() - 3);
+        cutoff.setFullYear(cutoff.getFullYear() - 3);
       }
 
       for (let index = 0; index < labels.length; index += 1) {
-        const currentDate = new Date(labels[index]);
-        if (!Number.isNaN(currentDate.getTime()) && currentDate >= cutoffDate) {
+        const currentDate = parseIsoDate(labels[index]);
+        if (currentDate && currentDate >= cutoff) {
           startIndex = index;
           break;
         }
@@ -241,472 +503,571 @@ function getVisibleDateRange() {
   return {
     startIndex,
     endIndex,
-    text: getVisibleDateRangeText(startIndex, endIndex, total),
+    text: `Visible chart window: ${formatDateDisplay(labels[startIndex])} to ${formatDateDisplay(labels[endIndex])}`,
   };
 }
 
 function updateVisibleDateRangeLabel() {
-  const labelElement = document.getElementById("visibleDateRange");
-  if (!labelElement) {
+  const label = document.getElementById("visibleDateRange");
+  if (!label) {
     return;
   }
-  labelElement.textContent = getVisibleDateRange().text;
+
+  const data = strategyData[activeStrategy];
+  const error = strategyErrors[activeStrategy];
+  if (error) {
+    label.textContent = "Visible chart window: no chart available in the active tab.";
+    return;
+  }
+  label.textContent = getVisibleRange(data).text;
 }
 
 function sliceSeries(values, startIndex, endIndex) {
   return Array.isArray(values) ? values.slice(startIndex, endIndex + 1) : [];
 }
 
-function getFilteredBacktestView() {
-  if (!currentBacktestData) {
-    return null;
-  }
-
-  const { startIndex, endIndex } = getVisibleDateRange();
-  const safeStart = Math.max(0, startIndex);
-  const safeEnd = Math.max(safeStart, endIndex);
-
+function getVisibleSeries(data) {
+  const range = getVisibleRange(data);
   return {
-    ...currentBacktestData,
-    dates: sliceSeries(currentBacktestData.dates, safeStart, safeEnd),
-    portfolio: sliceSeries(currentBacktestData.portfolio, safeStart, safeEnd),
-    benchmark: sliceSeries(currentBacktestData.benchmark, safeStart, safeEnd),
-    portfolio_values_egp: sliceSeries(currentBacktestData.portfolio_values_egp, safeStart, safeEnd),
-    benchmark_values_egp: sliceSeries(currentBacktestData.benchmark_values_egp, safeStart, safeEnd),
-    cash_history: sliceSeries(currentBacktestData.cash_history, safeStart, safeEnd),
-    invested_value_history: sliceSeries(currentBacktestData.invested_value_history, safeStart, safeEnd),
-    number_of_positions_history: sliceSeries(currentBacktestData.number_of_positions_history, safeStart, safeEnd),
-    daily_buy_operations: sliceSeries(currentBacktestData.daily_buy_operations, safeStart, safeEnd),
-    daily_sell_operations: sliceSeries(currentBacktestData.daily_sell_operations, safeStart, safeEnd),
-    selected_asset: currentBacktestData.selected_asset
-      ? {
-          ...currentBacktestData.selected_asset,
-          dates: sliceSeries(currentBacktestData.selected_asset.dates, safeStart, safeEnd),
-          close: sliceSeries(currentBacktestData.selected_asset.close, safeStart, safeEnd),
-          buy_markers: sliceSeries(currentBacktestData.selected_asset.buy_markers, safeStart, safeEnd),
-          sell_markers: sliceSeries(currentBacktestData.selected_asset.sell_markers, safeStart, safeEnd),
-        }
-      : null,
+    range,
+    dates: sliceSeries(data.dates, range.startIndex, range.endIndex),
+    portfolioValues: sliceSeries(data.portfolio_values, range.startIndex, range.endIndex),
+    benchmarkValues: sliceSeries(data.benchmark_values, range.startIndex, range.endIndex),
+    equity: sliceSeries(data.equity, range.startIndex, range.endIndex),
+    benchmarkEquity: sliceSeries(data.benchmark_equity, range.startIndex, range.endIndex),
+    drawdown: sliceSeries(data.drawdown, range.startIndex, range.endIndex),
   };
 }
 
-function applyChartDefaults(chart) {
-  if (!chart) {
+function getDetailRowsForStrategy(strategy, data) {
+  const parameters = data.parameters || {};
+  const extra = data.extra || {};
+
+  if (strategy === "mlp") {
+    return [
+      { label: "Model", value: parameters.model || "MLP" },
+      { label: "Hidden size", value: formatInteger(extra.architecture_hidden) },
+      { label: "Hidden layers", value: formatInteger(extra.hidden_layers) },
+      { label: "Epochs", value: formatInteger(extra.epochs) },
+      { label: "Learning rate", value: formatNumber(extra.learning_rate, 4) },
+      { label: "Seed", value: formatInteger(extra.seed) },
+      { label: "Selection rule", value: extra.selection_rule },
+      {
+        label: "Valid OOS period",
+        value: `${formatDateDisplay(extra.oos_valid_start_date)} to ${formatDateDisplay(extra.oos_valid_end_date)}`,
+      },
+      { label: "Average stocks held", value: formatNumber(extra.average_stocks_held_full_period, 2) },
+      { label: "Features", value: Array.isArray(extra.feature_names) ? extra.feature_names.join(", ") : EMPTY_VALUE },
+    ];
+  }
+
+  if (strategy === "lstm") {
+    return [
+      { label: "Model", value: parameters.model || "LSTM" },
+      { label: "Hidden size", value: formatInteger(extra.architecture_hidden) },
+      { label: "Sequence length", value: formatInteger(extra.sequence_length) },
+      { label: "Epochs", value: formatInteger(extra.epochs) },
+      { label: "Learning rate", value: formatNumber(extra.learning_rate, 4) },
+      { label: "Seed", value: formatInteger(extra.seed) },
+      { label: "Selection rule", value: extra.selection_rule },
+      {
+        label: "Valid OOS period",
+        value: `${formatDateDisplay(extra.oos_valid_start_date)} to ${formatDateDisplay(extra.oos_valid_end_date)}`,
+      },
+      { label: "Average stocks held", value: formatNumber(extra.average_stocks_held_full_period, 2) },
+      { label: "Features", value: Array.isArray(extra.feature_names) ? extra.feature_names.join(", ") : EMPTY_VALUE },
+    ];
+  }
+
+  if (strategy === "sma") {
+    return [
+      { label: "Fast MA", value: formatInteger(parameters.fast_window) },
+      { label: "Slow MA", value: formatInteger(parameters.slow_window) },
+      { label: "Observation lookback", value: `${formatInteger(extra.lookback_window_days)} days` },
+      { label: "Signal rule", value: extra.signal_definition },
+      { label: "Average stocks held", value: formatNumber(extra.average_stocks_held, 2) },
+    ];
+  }
+
+  return [
+    { label: "Lookback", value: `${formatInteger(parameters.lookback_days)} trading days` },
+    { label: "Buy threshold", value: formatPercent(parameters.buy_threshold_pct) },
+    { label: "Sell threshold", value: formatPercent(parameters.sell_threshold_pct) },
+    { label: "Buy notional", value: formatCurrency(parameters.buy_notional) },
+    { label: "Sell notional", value: formatCurrency(parameters.sell_notional) },
+    { label: "Execution order", value: extra.execution_order },
+    { label: "Fractional shares", value: formatBoolean(extra.fractional_shares) },
+    { label: "Short selling", value: formatBoolean(extra.short_selling) },
+    { label: "Signal rule", value: extra.signal_definition },
+  ];
+}
+
+function renderDetailList(container, rows) {
+  if (!container) {
     return;
   }
 
-  chart.options.animation = false;
-  chart.options.normalized = true;
-  chart.options.interaction = {
-    mode: "index",
-    axis: "x",
-    intersect: false,
-  };
+  container.replaceChildren();
+  rows.forEach((rowData) => {
+    const row = document.createElement("div");
+    row.className = "detail-row";
 
-  if (chart.options.scales && chart.options.scales.x) {
-    chart.options.scales.x.ticks = {
-      autoSkip: true,
-      maxTicksLimit: 14,
-      minRotation: 0,
-      maxRotation: 45,
-    };
-  }
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = rowData.label;
 
-  chart.update("none");
-}
+    const value = document.createElement("span");
+    value.className = "value";
+    value.textContent = formatText(rowData.value);
 
-function setDateRangeSelection(range) {
-  selectedDateRange = range;
-  const buttons = document.querySelectorAll(".date-range-button");
-  buttons.forEach((button) => {
-    const isActive = button.getAttribute("data-range") === range;
-    button.classList.toggle("active", isActive);
-  });
-
-  updateVisibleDateRangeLabel();
-  if (currentBacktestData) {
-    renderEquityChart(currentBacktestData);
-    renderPriceChart(currentBacktestData);
-    renderOperationsChart(currentBacktestData);
-  }
-}
-
-function attachChartNavigationListeners() {
-  const buttons = document.querySelectorAll(".date-range-button");
-  buttons.forEach((button) => {
-    button.addEventListener("click", () => {
-      setDateRangeSelection(button.getAttribute("data-range") || "ALL");
-    });
+    row.appendChild(label);
+    row.appendChild(value);
+    container.appendChild(row);
   });
 }
 
-function addChartCanvasEvents() {
-  ["equityChart", "priceChart", "operationsChart"].forEach((id) => {
-    const canvas = document.getElementById(id);
-    if (canvas) {
-      canvas.addEventListener("dblclick", () => setDateRangeSelection("ALL"));
-    }
-  });
+function getConfigRows(data) {
+  return [
+    { label: "Universe", value: universeLabel(data.universe) },
+    { label: "Requested start", value: formatDateDisplay(data.requested_start_date) },
+    { label: "Actual start", value: formatDateDisplay(data.actual_start_date) },
+    { label: "End date", value: formatDateDisplay(data.end_date) },
+    { label: "Initial capital", value: formatCurrency(data.initial_cash) },
+    { label: "Benchmark", value: data.benchmark_label },
+  ];
 }
 
-function formatEGP(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return "â€”";
-  }
-  return `${numeric.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EGP`;
-}
-
-function formatPercentDecimal(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return "â€”";
-  }
-  return `${(numeric * 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
-}
-
-function formatRatio(value, digits = 3) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return "â€”";
-  }
-  return numeric.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
-}
-
-function formatCount(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return "â€”";
-  }
-  return Math.round(numeric).toLocaleString();
-}
-
-function formatShares(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return "â€”";
-  }
-  return numeric.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 6 });
-}
-
-function formatTradeValue(key, value) {
-  if (value === null || value === undefined || value === "") {
-    return "-";
-  }
-
-  if (["signal_return", "predicted_return", "actual_return", "previous_weight", "new_weight", "weight_change"].includes(key)) {
-    return formatPercentDecimal(value);
-  }
-  if (["price", "notional", "cash_after", "close"].includes(key)) {
-    return formatEGP(value);
-  }
-  if (["shares", "position_after"].includes(key)) {
-    return formatShares(value);
-  }
-  return String(value);
-}
-
-function setValueClass(element, state) {
+function applyKpiClass(element, key, value, metrics) {
   if (!element) {
     return;
   }
+
   element.classList.remove("positive", "negative");
-  if (state === "positive") {
-    element.classList.add("positive");
-  } else if (state === "negative") {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return;
+  }
+
+  if (["profit_loss_egp", "total_return_pct", "benchmark_return_pct", "excess_return_pct", "sharpe_ratio"].includes(key)) {
+    if (numeric > 0) {
+      element.classList.add("positive");
+    } else if (numeric < 0) {
+      element.classList.add("negative");
+    }
+    return;
+  }
+
+  if (key === "final_portfolio_value") {
+    const initial = Number(metrics.initial_portfolio_value);
+    if (Number.isFinite(initial)) {
+      if (numeric > initial) {
+        element.classList.add("positive");
+      } else if (numeric < initial) {
+        element.classList.add("negative");
+      }
+    }
+    return;
+  }
+
+  if (["maximum_drawdown_pct", "current_drawdown_pct"].includes(key) && numeric < 0) {
     element.classList.add("negative");
   }
 }
 
-function renderKpis(metrics, parameters) {
-  if (!metrics) {
-    clearKpiValues();
-    return;
-  }
+function renderKpis(strategy, data) {
+  const metrics = data.kpis || {};
 
-  const initialCash = parameters ? Number(parameters.initial_cash) : NaN;
-
-  const totalReturn = document.getElementById("kpiTotalReturn");
-  const sharpe = document.getElementById("kpiSharpe");
-  const maxDrawdown = document.getElementById("kpiMaxDrawdown");
-  const finalValue = document.getElementById("kpiFinalValue");
-  const profitLoss = document.getElementById("kpiProfitLoss");
-  const benchmarkReturn = document.getElementById("kpiBenchmarkReturn");
-  const excessReturn = document.getElementById("kpiExcessReturn");
-  const buyOperations = document.getElementById("kpiBuyOperations");
-  const sellOperations = document.getElementById("kpiSellOperations");
-  const skippedBuys = document.getElementById("kpiSkippedBuys");
-  const openPositions = document.getElementById("kpiOpenPositions");
-
-  if (totalReturn) {
-    totalReturn.textContent = formatPercentDecimal(metrics.total_return);
-    setValueClass(totalReturn, Number(metrics.total_return) >= 0 ? "positive" : "negative");
-  }
-  if (sharpe) {
-    sharpe.textContent = formatRatio(metrics.sharpe, 3);
-    setValueClass(sharpe, Number(metrics.sharpe) >= 0 ? "positive" : "negative");
-  }
-  if (maxDrawdown) {
-    maxDrawdown.textContent = formatPercentDecimal(metrics.max_drawdown);
-    setValueClass(maxDrawdown, Number(metrics.max_drawdown) > 0 ? "negative" : null);
-  }
-  if (finalValue) {
-    finalValue.textContent = formatEGP(metrics.final_portfolio_value);
-    if (Number.isFinite(initialCash)) {
-      if (Number(metrics.final_portfolio_value) > initialCash) {
-        setValueClass(finalValue, "positive");
-      } else if (Number(metrics.final_portfolio_value) < initialCash) {
-        setValueClass(finalValue, "negative");
-      } else {
-        setValueClass(finalValue, null);
-      }
+  KPI_DEFINITIONS.forEach((definition) => {
+    const element = getKpiValueElement(strategy, definition.key);
+    if (!element) {
+      return;
     }
-  }
-  if (profitLoss) {
-    profitLoss.textContent = formatEGP(metrics.profit_loss_egp);
-    setValueClass(profitLoss, Number(metrics.profit_loss_egp) >= 0 ? "positive" : "negative");
-  }
-  if (benchmarkReturn) {
-    benchmarkReturn.textContent = formatPercentDecimal(metrics.benchmark_total_return);
-    setValueClass(benchmarkReturn, Number(metrics.benchmark_total_return) >= 0 ? "positive" : "negative");
-  }
-  if (excessReturn) {
-    excessReturn.textContent = formatPercentDecimal(metrics.excess_return);
-    setValueClass(excessReturn, Number(metrics.excess_return) >= 0 ? "positive" : "negative");
-  }
-  if (buyOperations) {
-    buyOperations.textContent = formatCount(metrics.buy_operations);
-  }
-  if (sellOperations) {
-    sellOperations.textContent = formatCount(metrics.sell_operations);
-  }
-  if (skippedBuys) {
-    skippedBuys.textContent = formatCount(metrics.skipped_buy_operations);
-  }
-  if (openPositions) {
-    openPositions.textContent = formatCount(metrics.open_positions);
-  }
-}
-
-function renderEquityChart(data) {
-  destroyChart(equityChart);
-
-  const viewData = getFilteredBacktestView() || data;
-  const canvas = document.getElementById("equityChart");
-  if (!canvas) {
-    return;
-  }
-
-  equityChart = new Chart(canvas, {
-    type: "line",
-    data: {
-      labels: Array.isArray(viewData.dates) ? viewData.dates : [],
-      datasets: [
-        {
-          label: data.strategy && data.strategy.name ? data.strategy.name : "Strategy",
-          data: Array.isArray(viewData.portfolio) ? viewData.portfolio : [],
-          borderColor: "#4f8cff",
-          backgroundColor: "rgba(79, 140, 255, 0.18)",
-          pointRadius: 0,
-          borderWidth: 2,
-          tension: 0.18,
-        },
-        {
-          label: data.benchmark_name || "Benchmark",
-          data: Array.isArray(viewData.benchmark) ? viewData.benchmark : [],
-          borderColor: "#f59e0b",
-          backgroundColor: "rgba(245, 158, 11, 0.16)",
-          pointRadius: 0,
-          borderWidth: 2,
-          tension: 0.18,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: true },
-        title: {
-          display: true,
-          text: `${data.strategy && data.strategy.name ? data.strategy.name : "Strategy"} vs benchmark`,
-        },
-      },
-      scales: {
-        x: {},
-        y: {
-          title: {
-            display: true,
-            text: "Growth of 1.0 EGP",
-          },
-        },
-      },
-    },
+    const value = metrics[definition.key];
+    element.textContent = definition.formatter(value);
+    applyKpiClass(element, definition.key, value, metrics);
   });
-
-  applyChartDefaults(equityChart);
 }
 
-function renderPriceChart(data) {
-  destroyChart(priceChart);
-
-  const viewData = getFilteredBacktestView() || data;
-  const asset = viewData.selected_asset || {};
-  const canvas = document.getElementById("priceChart");
-  if (!canvas) {
-    return;
+function formatTradeValue(key, value) {
+  if (value === null || value === undefined || value === "") {
+    return EMPTY_VALUE;
   }
 
-  priceChart = new Chart(canvas, {
-    type: "line",
-    data: {
-      labels: Array.isArray(asset.dates) ? asset.dates : [],
-      datasets: [
-        {
-          label: "Close",
-          data: Array.isArray(asset.close) ? asset.close : [],
-          borderColor: "#7dd3fc",
-          backgroundColor: "rgba(125, 211, 252, 0.16)",
-          pointRadius: 0,
-          borderWidth: 1.8,
-          tension: 0.15,
-          spanGaps: false,
-        },
-        {
-          label: asset.buy_label || "Exposure increases",
-          data: Array.isArray(asset.buy_markers) ? asset.buy_markers : [],
-          showLine: false,
-          pointStyle: "triangle",
-          pointRadius: 7,
-          pointHoverRadius: 9,
-          pointBorderColor: "#22c55e",
-          pointBackgroundColor: "#22c55e",
-          borderColor: "#22c55e",
-          backgroundColor: "#22c55e",
-          spanGaps: false,
-        },
-        {
-          label: asset.sell_label || "Exposure decreases",
-          data: Array.isArray(asset.sell_markers) ? asset.sell_markers : [],
-          showLine: false,
-          pointStyle: "triangle",
-          pointRotation: 180,
-          pointRadius: 7,
-          pointHoverRadius: 9,
-          pointBorderColor: "#ef4444",
-          pointBackgroundColor: "#ef4444",
-          borderColor: "#ef4444",
-          backgroundColor: "#ef4444",
-          spanGaps: false,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: true },
-        title: {
-          display: true,
-          text: `${data.selected_symbol} - strategy diagnostics`,
-        },
-      },
-      scales: {
-        x: {},
-        y: {
-          title: {
-            display: true,
-            text: "Price (EGP)",
-          },
-        },
-      },
-    },
-  });
-
-  applyChartDefaults(priceChart);
-}
-
-function renderOperationsChart(data) {
-  destroyChart(operationsChart);
-
-  const viewData = getFilteredBacktestView() || data;
-  const canvas = document.getElementById("operationsChart");
-  if (!canvas) {
-    return;
+  if (["price", "notional", "portfolio_value_after"].includes(key)) {
+    return formatCurrency(value);
   }
-
-  operationsChart = new Chart(canvas, {
-    type: "bar",
-    data: {
-      labels: Array.isArray(viewData.dates) ? viewData.dates : [],
-      datasets: [
-        {
-          label: data.strategy_id === BEST_NEURAL_STRATEGY_ID ? "Daily weight increases" : "Daily buys",
-          data: Array.isArray(viewData.daily_buy_operations) ? viewData.daily_buy_operations : [],
-          backgroundColor: "rgba(34, 197, 94, 0.7)",
-          borderColor: "#22c55e",
-          borderWidth: 1,
-        },
-        {
-          label: data.strategy_id === BEST_NEURAL_STRATEGY_ID ? "Daily weight decreases" : "Daily sells",
-          data: Array.isArray(viewData.daily_sell_operations) ? viewData.daily_sell_operations : [],
-          backgroundColor: "rgba(239, 68, 68, 0.7)",
-          borderColor: "#ef4444",
-          borderWidth: 1,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: true },
-        title: {
-          display: true,
-          text: data.strategy_id === BEST_NEURAL_STRATEGY_ID ? "Daily position changes" : "Daily buy and sell operations",
-        },
-      },
-      scales: {
-        x: {},
-        y: {
-          beginAtZero: true,
-          title: {
-            display: true,
-            text: "Operations",
-          },
-          ticks: {
-            precision: 0,
-          },
-        },
-      },
-    },
-  });
-
-  applyChartDefaults(operationsChart);
+  if (key === "shares") {
+    return formatNumber(value, 6);
+  }
+  return formatText(value);
 }
 
-function renderTradeTable(trades) {
-  const tbody = document.getElementById("tradeTableBody");
+function renderTradeTable(strategy, trades) {
+  const tbody = getPanelRole(strategy, "tradeTableBody");
   if (!tbody) {
     return;
   }
 
   tbody.replaceChildren();
   if (!Array.isArray(trades) || trades.length === 0) {
-    showEmptyTradeTable("No executed trades occurred for this backtest.");
+    showEmptyTradeTable(strategy, "No executed trades occurred for this backtest window.");
     return;
   }
 
   trades.forEach((trade) => {
     const row = document.createElement("tr");
-    currentTradeColumns.forEach((column) => {
+    ["date", "operation", "symbol", "price", "shares", "notional", "portfolio_value_after"].forEach((key) => {
       const cell = document.createElement("td");
-      cell.textContent = formatTradeValue(column.key, trade[column.key]);
+      cell.textContent = formatTradeValue(key, trade[key]);
       row.appendChild(cell);
     });
-
     tbody.appendChild(row);
   });
+}
+
+function axisNumber(value, digits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return EMPTY_VALUE;
+  }
+  return numeric.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function axisCurrency(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return EMPTY_VALUE;
+  }
+  return numeric.toLocaleString(undefined, {
+    maximumFractionDigits: 0,
+  });
+}
+
+function commonChartOptions({ yTitle, tickFormatter, labelFormatter, title, extraTooltipLine }) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    normalized: true,
+    interaction: {
+      mode: "index",
+      axis: "x",
+      intersect: false,
+    },
+    plugins: {
+      legend: { display: true },
+      title: {
+        display: true,
+        text: title,
+      },
+      tooltip: {
+        callbacks: {
+          title(items) {
+            const first = items && items[0];
+            return first ? `Date: ${formatDateDisplay(first.label)}` : "";
+          },
+          label(context) {
+            return `${context.dataset.label}: ${labelFormatter(context.parsed.y)}`;
+          },
+          afterBody(items) {
+            if (typeof extraTooltipLine !== "function") {
+              return [];
+            }
+            const line = extraTooltipLine(items);
+            return line ? [line] : [];
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        ticks: {
+          autoSkip: true,
+          maxTicksLimit: 12,
+          minRotation: 0,
+          maxRotation: 40,
+        },
+        grid: {
+          color: "rgba(49, 72, 102, 0.3)",
+        },
+      },
+      y: {
+        title: {
+          display: true,
+          text: yTitle,
+        },
+        ticks: {
+          callback: tickFormatter,
+        },
+        grid: {
+          color: "rgba(49, 72, 102, 0.3)",
+        },
+      },
+    },
+  };
+}
+
+function renderPortfolioChart(strategy, data) {
+  const panel = getPanel(strategy);
+  if (!panel) {
+    return;
+  }
+
+  const canvas = panel.querySelector("[data-chart='portfolio']");
+  if (!canvas) {
+    return;
+  }
+
+  destroyChart(chartInstances[strategy].portfolio);
+
+  const visible = getVisibleSeries(data);
+  const strategyColor = STRATEGIES[strategy].color;
+
+  chartInstances[strategy].portfolio = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: visible.dates,
+      datasets: [
+        {
+          label: STRATEGIES[strategy].label,
+          data: visible.portfolioValues,
+          borderColor: strategyColor,
+          backgroundColor: `${strategyColor}22`,
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.18,
+        },
+        {
+          label: data.benchmark_label || "Benchmark",
+          data: visible.benchmarkValues,
+          borderColor: "#fbbf24",
+          backgroundColor: "rgba(251, 191, 36, 0.15)",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.18,
+        },
+        {
+          label: "Initial capital",
+          data: visible.dates.map(() => data.initial_cash),
+          borderColor: "#94a3b8",
+          borderDash: [6, 6],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0,
+        },
+      ],
+    },
+    options: commonChartOptions({
+      yTitle: "Portfolio Value (EGP)",
+      tickFormatter: axisCurrency,
+      labelFormatter: formatCurrency,
+      title: `${STRATEGIES[strategy].shortLabel} - Portfolio Value`,
+    }),
+  });
+}
+
+function renderEquityChart(strategy, data) {
+  const panel = getPanel(strategy);
+  if (!panel) {
+    return;
+  }
+
+  const canvas = panel.querySelector("[data-chart='equity']");
+  if (!canvas) {
+    return;
+  }
+
+  destroyChart(chartInstances[strategy].equity);
+
+  const visible = getVisibleSeries(data);
+  const strategyColor = STRATEGIES[strategy].color;
+
+  chartInstances[strategy].equity = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: visible.dates,
+      datasets: [
+        {
+          label: STRATEGIES[strategy].label,
+          data: visible.equity,
+          borderColor: strategyColor,
+          backgroundColor: `${strategyColor}22`,
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.18,
+        },
+        {
+          label: data.benchmark_label || "Benchmark",
+          data: visible.benchmarkEquity,
+          borderColor: "#fbbf24",
+          backgroundColor: "rgba(251, 191, 36, 0.15)",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.18,
+        },
+      ],
+    },
+    options: commonChartOptions({
+      yTitle: "Growth of Initial Capital",
+      tickFormatter: (value) => axisNumber(value, 2),
+      labelFormatter: (value) => axisNumber(value, 2),
+      title: "Equity Growth",
+      extraTooltipLine(items) {
+        const first = items && items[0];
+        if (!first || first.datasetIndex !== 0) {
+          return "";
+        }
+        const numeric = Number(first.parsed.y);
+        return Number.isFinite(numeric) ? `Strategy return since start: ${formatPercent((numeric - 1) * 100)}` : "";
+      },
+    }),
+  });
+}
+
+function renderDrawdownChart(strategy, data) {
+  const panel = getPanel(strategy);
+  if (!panel) {
+    return;
+  }
+
+  const canvas = panel.querySelector("[data-chart='drawdown']");
+  if (!canvas) {
+    return;
+  }
+
+  destroyChart(chartInstances[strategy].drawdown);
+
+  const visible = getVisibleSeries(data);
+
+  chartInstances[strategy].drawdown = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: visible.dates,
+      datasets: [
+        {
+          label: "Drawdown",
+          data: visible.drawdown,
+          borderColor: "#fb7185",
+          backgroundColor: "rgba(251, 113, 133, 0.14)",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.12,
+          fill: "origin",
+        },
+      ],
+    },
+    options: {
+      ...commonChartOptions({
+        yTitle: "Drawdown (%)",
+        tickFormatter: (value) => `${axisNumber(value, 0)}%`,
+        labelFormatter: formatPercent,
+        title: "Portfolio Drawdown",
+      }),
+      scales: {
+        x: {
+          ticks: {
+            autoSkip: true,
+            maxTicksLimit: 12,
+            minRotation: 0,
+            maxRotation: 40,
+          },
+          grid: {
+            color: "rgba(49, 72, 102, 0.3)",
+          },
+        },
+        y: {
+          title: {
+            display: true,
+            text: "Drawdown (%)",
+          },
+          suggestedMax: 0,
+          ticks: {
+            callback(value) {
+              return `${axisNumber(value, 0)}%`;
+            },
+          },
+          grid: {
+            color: "rgba(49, 72, 102, 0.3)",
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderStrategyPanel(strategy) {
+  const panel = getPanel(strategy);
+  if (!panel) {
+    return;
+  }
+
+  const error = strategyErrors[strategy];
+  const data = strategyData[strategy];
+  const title = getPanelRole(strategy, "strategyTitle");
+  const note = getPanelRole(strategy, "strategyNote");
+
+  if (title) {
+    title.textContent = data && data.strategy_label ? data.strategy_label : STRATEGIES[strategy].label;
+  }
+  if (note) {
+    note.textContent = data && data.strategy_description ? data.strategy_description : STRATEGIES[strategy].note;
+  }
+
+  if (error) {
+    panel.dataset.loading = "false";
+    setPanelStatus(strategy, error.message || "Unable to load this strategy.", true);
+    clearDetailList(getPanelRole(strategy, "parameterSummary"), "Unavailable");
+    clearDetailList(getPanelRole(strategy, "strategyDetails"), "Unavailable");
+    showEmptyTradeTable(strategy, error.message || "Unable to load trades.");
+    KPI_DEFINITIONS.forEach((definition) => {
+      const value = getKpiValueElement(strategy, definition.key);
+      if (!value) {
+        return;
+      }
+      value.textContent = EMPTY_VALUE;
+      value.classList.remove("positive", "negative");
+    });
+    destroyStrategyCharts(strategy);
+    return;
+  }
+
+  if (!data) {
+    clearStrategyPanel(strategy, "Run strategies to load this tab.");
+    return;
+  }
+
+  panel.dataset.loading = "false";
+  setPanelStatus(
+    strategy,
+    `${data.strategy_label} loaded for the ${universeLabel(data.universe).toLowerCase()}. Actual start date: ${formatDateDisplay(data.actual_start_date)}.`,
+    false
+  );
+
+  renderKpis(strategy, data);
+  renderDetailList(getPanelRole(strategy, "parameterSummary"), getConfigRows(data));
+  renderDetailList(getPanelRole(strategy, "strategyDetails"), getDetailRowsForStrategy(strategy, data));
+  renderTradeTable(strategy, data.trades || []);
+
+  if (strategy === activeStrategy) {
+    renderPortfolioChart(strategy, data);
+    renderEquityChart(strategy, data);
+    renderDrawdownChart(strategy, data);
+  }
+}
+
+function buildStrategyUrl(strategy) {
+  const universe = getSelectedUniverse();
+  const startDate = getSelectedStartDate();
+  const initialCapital = getSelectedInitialCapital();
+  const query = new URLSearchParams({
+    universe,
+    initial_cash: String(initialCapital),
+    start_date: startDate,
+  });
+  return `${API}/strategy/${encodeURIComponent(strategy)}?${query.toString()}`;
 }
 
 async function fetchJson(url, fallbackMessage) {
@@ -720,8 +1081,11 @@ async function fetchJson(url, fallbackMessage) {
   }
 
   if (!response.ok) {
-    const detail = payload && payload.detail ? payload.detail : fallbackMessage;
-    throw new Error(detail);
+    const detail = payload && Object.prototype.hasOwnProperty.call(payload, "detail") ? payload.detail : null;
+    const message = typeof detail === "string" ? detail : (detail && detail.message) || fallbackMessage;
+    const error = new Error(message);
+    error.detail = detail;
+    throw error;
   }
 
   return payload;
@@ -729,138 +1093,97 @@ async function fetchJson(url, fallbackMessage) {
 
 async function checkHealth() {
   try {
-    const data = await fetchJson(`${API}/health`, "Unable to reach backend.");
-    setStatusMessage(`backend: ${data.status}`);
+    const payload = await fetchJson(`${API}/health`, "Unable to reach backend.");
+    setStatusMessage(`Backend status: ${payload.status}`);
     return true;
   } catch (error) {
     console.error(error);
-    setStatusMessage("backend not reachable â€” start uvicorn");
+    setStatusMessage("Backend not reachable. Start the FastAPI server to use the dashboard.");
     return false;
   }
 }
 
-async function loadUniverse(universe, preferredSymbol) {
-  const universeSelect = document.getElementById("universeSelect");
-  const symbolSelect = document.getElementById("symbolSelect");
-  if (!symbolSelect) {
-    return [];
+async function loadStrategyMetadata() {
+  const universe = getSelectedUniverse();
+  const hint = document.getElementById("startDateHint");
+  const startDateInput = document.getElementById("portfolioStartDate");
+
+  try {
+    strategyMeta = await fetchJson(
+      `${API}/strategy-metadata?universe=${encodeURIComponent(universe)}`,
+      "Unable to load strategy metadata."
+    );
+
+    if (startDateInput) {
+      startDateInput.min = strategyMeta.market_history_start_date;
+      startDateInput.max = strategyMeta.latest_start_date;
+
+      const currentValue = startDateInput.value;
+      const minDate = parseIsoDate(strategyMeta.market_history_start_date);
+      const maxDate = parseIsoDate(strategyMeta.latest_start_date);
+      const currentDate = currentValue ? parseIsoDate(currentValue) : null;
+      const currentIsValid = currentDate
+        && minDate
+        && maxDate
+        && currentDate >= minDate
+        && currentDate <= maxDate;
+
+      if (!currentIsValid) {
+        startDateInput.value = strategyMeta.common_earliest_start_date;
+      }
+    }
+
+    if (hint) {
+      hint.textContent =
+        `Common earliest comparison start for the ${universeLabel(universe).toLowerCase()}: `
+        + `${formatDateDisplay(strategyMeta.common_earliest_start_date)}. `
+        + "Earlier dates remain selectable, but neural tabs may return a clear unavailable message.";
+    }
+  } catch (error) {
+    console.error(error);
+    strategyMeta = null;
+    if (hint) {
+      hint.textContent = error.message || "Unable to load strategy metadata.";
+    }
   }
-
-  if (universeSelect) {
-    universeSelect.value = universe;
-  }
-
-  const symbols = await fetchJson(
-    `${API}/universe?universe=${encodeURIComponent(universe)}`,
-    "Unable to load universe."
-  );
-
-  symbolSelect.replaceChildren();
-  symbols.forEach((symbol) => {
-    const option = document.createElement("option");
-    option.value = symbol;
-    option.textContent = symbol;
-    symbolSelect.appendChild(option);
-  });
-
-  if (symbols.length > 0) {
-    const nextSymbol = preferredSymbol && symbols.includes(preferredSymbol)
-      ? preferredSymbol
-      : symbols[0];
-    symbolSelect.value = nextSymbol;
-  }
-
-  return symbols;
 }
 
-function getStrategyParameters() {
-  const symbolSelect = document.getElementById("symbolSelect");
-  const lookbackInput = document.getElementById("lookbackDays");
-  const buyThresholdInput = document.getElementById("buyThreshold");
-  const sellThresholdInput = document.getElementById("sellThreshold");
-  const buyNotionalInput = document.getElementById("buyNotional");
-  const sellNotionalInput = document.getElementById("sellNotional");
-  const initialCashInput = document.getElementById("initialCash");
+function validateControls() {
+  const startDate = getSelectedStartDate();
+  const initialCapital = getSelectedInitialCapital();
 
-  const symbol = symbolSelect ? symbolSelect.value : "";
-  const lookbackDays = Number.parseInt(lookbackInput ? lookbackInput.value : "", 10);
-  const buyThresholdPercent = Number.parseFloat(buyThresholdInput ? buyThresholdInput.value : "");
-  const sellThresholdPercent = Number.parseFloat(sellThresholdInput ? sellThresholdInput.value : "");
-  const buyNotional = Number.parseFloat(buyNotionalInput ? buyNotionalInput.value : "");
-  const sellNotional = Number.parseFloat(sellNotionalInput ? sellNotionalInput.value : "");
-  const initialCash = Number.parseFloat(initialCashInput ? initialCashInput.value : "");
-
-  if (!symbol) {
-    throw new Error("Please select a stock for the diagnostic chart.");
+  if (!startDate) {
+    throw new Error("Please choose a portfolio start date.");
   }
-  if (!Number.isFinite(initialCash) || initialCash <= 0) {
-    throw new Error("Initial cash must be greater than zero.");
+  if (!Number.isFinite(initialCapital) || initialCapital <= 0) {
+    throw new Error("Initial capital must be greater than zero.");
   }
+}
 
-  if (isNeuralStrategySelected()) {
+function normalizeRunError(error) {
+  if (!error) {
+    return { message: "Unknown strategy error." };
+  }
+  if (error.detail && typeof error.detail === "object") {
     return {
-      strategy: selectedStrategy,
-      universe: "full",
-      symbol,
-      initial_cash: initialCash,
+      message: error.detail.message || error.message || "Strategy unavailable.",
+      detail: error.detail,
     };
   }
-
-  if (!Number.isFinite(lookbackDays) || lookbackDays < 1) {
-    throw new Error("Lookback days must be at least 1.");
-  }
-  if (!Number.isFinite(buyThresholdPercent) || buyThresholdPercent >= 0) {
-    throw new Error("Buy threshold must be negative.");
-  }
-  if (!Number.isFinite(sellThresholdPercent) || sellThresholdPercent <= 0) {
-    throw new Error("Sell threshold must be positive.");
-  }
-  if (!Number.isFinite(buyNotional) || buyNotional <= 0) {
-    throw new Error("Buy notional must be greater than zero.");
-  }
-  if (!Number.isFinite(sellNotional) || sellNotional <= 0) {
-    throw new Error("Sell notional must be greater than zero.");
-  }
-
   return {
-    strategy: selectedStrategy,
-    universe: selectedUniverse,
-    symbol,
-    lookback_days: lookbackDays,
-    buy_threshold: buyThresholdPercent / 100,
-    sell_threshold: sellThresholdPercent / 100,
-    buy_notional: buyNotional,
-    sell_notional: sellNotional,
-    initial_cash: initialCash,
+    message: error.message || "Strategy unavailable.",
   };
 }
 
-function buildBacktestUrl(parameters) {
-  const query = new URLSearchParams({
-    strategy: parameters.strategy,
-    universe: parameters.universe,
-    symbol: parameters.symbol,
-    initial_cash: String(parameters.initial_cash),
-  });
-
-  if (!isNeuralStrategySelected()) {
-    query.set("lookback_days", String(parameters.lookback_days));
-    query.set("buy_threshold", String(parameters.buy_threshold));
-    query.set("sell_threshold", String(parameters.sell_threshold));
-    query.set("buy_notional", String(parameters.buy_notional));
-    query.set("sell_notional", String(parameters.sell_notional));
-  }
-  return `${API}/backtest?${query.toString()}`;
-}
-
-async function runBacktest() {
-  const runButton = document.getElementById("runBacktestButton");
-  let parameters;
+async function runStrategies() {
+  const runButton = document.getElementById("runDashboardButton");
+  let initialCapital = NaN;
 
   try {
-    parameters = getStrategyParameters();
+    validateControls();
+    initialCapital = getSelectedInitialCapital();
   } catch (error) {
-    setStrategyStatus(error.message || "Please review the strategy parameters.");
+    setDashboardStatus(error.message || "Please review the shared controls.");
     return;
   }
 
@@ -869,104 +1192,63 @@ async function runBacktest() {
     runButton.disabled = true;
   }
 
-  const loadingMessage = isNeuralStrategySelected()
-    ? "Loading precomputed neural strategy..."
-    : "Running weekly contrarian backtest...";
-  clearDashboardResults(loadingMessage);
-  setStrategyStatus(loadingMessage);
+  strategyData = createStrategyState(null);
+  strategyErrors = createStrategyState(null);
+  STRATEGY_KEYS.forEach((strategy) => {
+    setStrategyLoading(strategy, "Running strategy...");
+  });
 
-  try {
-    const payload = await fetchJson(
-      buildBacktestUrl(parameters),
-      "Backtest request failed."
+  const universe = getSelectedUniverse();
+  const startDate = getSelectedStartDate();
+  setDashboardStatus("Running strategies...");
+
+  const tasks = STRATEGY_KEYS.map(async (strategy) => {
+    try {
+      const payload = await fetchJson(buildStrategyUrl(strategy), "Strategy request failed.");
+      if (requestToken !== activeRequestToken) {
+        return;
+      }
+      strategyData[strategy] = payload;
+      strategyErrors[strategy] = null;
+    } catch (error) {
+      if (requestToken !== activeRequestToken) {
+        return;
+      }
+      strategyData[strategy] = null;
+      strategyErrors[strategy] = normalizeRunError(error);
+    }
+  });
+
+  await Promise.allSettled(tasks);
+
+  if (requestToken !== activeRequestToken) {
+    return;
+  }
+
+  STRATEGY_KEYS.forEach((strategy) => {
+    renderStrategyPanel(strategy);
+  });
+
+  const successCount = STRATEGY_KEYS.filter((strategy) => Boolean(strategyData[strategy])).length;
+  const failureCount = STRATEGY_KEYS.length - successCount;
+
+  if (successCount === STRATEGY_KEYS.length) {
+    setDashboardStatus(
+      `Loaded all four strategies for ${formatDateDisplay(startDate)}, ${universeLabel(universe).toLowerCase()}, and ${formatCurrency(initialCapital)}.`
     );
-
-    if (requestToken !== activeRequestToken) {
-      return;
-    }
-
-    currentBacktestData = payload;
-    selectedUniverse = payload.universe || selectedUniverse;
-    setTradeColumns(payload.trade_columns || DEFAULT_TRADE_COLUMNS);
-    updateVisibleDateRangeLabel();
-    renderKpis(payload.metrics || {}, payload.parameters || {});
-    renderEquityChart(payload);
-    renderPriceChart(payload);
-    renderOperationsChart(payload);
-    renderTradeTable(payload.trades || []);
-    setStrategyStatus(
-      `${payload.strategy.name} loaded for the ${payload.universe} universe. `
-      + `Selected stock diagnostics: ${payload.selected_symbol}.`
+  } else if (successCount > 0) {
+    setDashboardStatus(
+      `Loaded ${successCount} strategy tabs and ${failureCount} tab${failureCount === 1 ? "" : "s"} reported a clear error for the current start date.`
     );
-  } catch (error) {
-    console.error(error);
-    if (requestToken !== activeRequestToken) {
-      return;
-    }
-    clearDashboardResults("No executed trades occurred for this backtest.");
-    setStrategyStatus(error.message || "Unable to load backtest data.");
-  } finally {
-    if (runButton && requestToken === activeRequestToken) {
-      runButton.disabled = false;
-    }
-  }
-}
-
-async function handleUniverseChange() {
-  const universeSelect = document.getElementById("universeSelect");
-  const nextUniverse = universeSelect ? universeSelect.value : "small";
-  selectedUniverse = isNeuralStrategySelected() ? "full" : nextUniverse;
-
-  try {
-    setStrategyStatus("Loading the selected universe...");
-    await loadUniverse(selectedUniverse);
-    await runBacktest();
-  } catch (error) {
-    console.error(error);
-    clearDashboardResults("Run a backtest to load trades.");
-    setStrategyStatus(error.message || "Unable to load the selected universe.");
-  }
-}
-
-async function handleStrategyChange() {
-  const strategySelect = document.getElementById("strategySelect");
-  const symbolSelect = document.getElementById("symbolSelect");
-  selectedStrategy = strategySelect ? strategySelect.value : WEEKLY_CONTRARIAN_STRATEGY_ID;
-  if (isNeuralStrategySelected()) {
-    selectedUniverse = "full";
+  } else {
+    setDashboardStatus("No strategy completed successfully for the current settings.");
   }
 
-  updateStrategyControlState();
+  renderStrategyPanel(activeStrategy);
+  updateVisibleDateRangeLabel();
 
-  try {
-    setStrategyStatus(`Loading ${getStrategyDisplayName()}...`);
-    const preferredSymbol = symbolSelect ? symbolSelect.value : undefined;
-    await loadUniverse(selectedUniverse, preferredSymbol);
-    await runBacktest();
-  } catch (error) {
-    console.error(error);
-    clearDashboardResults("Run a backtest to load trades.");
-    setStrategyStatus(error.message || "Unable to change strategy.");
-  }
-}
-
-function attachEventListeners() {
-  const runButton = document.getElementById("runBacktestButton");
-  const strategySelect = document.getElementById("strategySelect");
-  const universeSelect = document.getElementById("universeSelect");
-  const symbolSelect = document.getElementById("symbolSelect");
-
-  if (runButton) {
-    runButton.addEventListener("click", runBacktest);
-  }
-  if (strategySelect) {
-    strategySelect.addEventListener("change", handleStrategyChange);
-  }
-  if (universeSelect) {
-    universeSelect.addEventListener("change", handleUniverseChange);
-  }
-  if (symbolSelect) {
-    symbolSelect.addEventListener("change", runBacktest);
+  if (runButton && requestToken === activeRequestToken) {
+    runButton.disabled = false;
   }
 }
 
@@ -976,33 +1258,25 @@ async function initializeDashboard() {
   }
   initializationStarted = true;
 
-  setDateRangeSelection("ALL");
-  updateStrategyControlState();
-  setTradeColumns(DEFAULT_TRADE_COLUMNS);
-  setStrategyStatus(defaultStrategyStatus());
+  buildStrategyPanels();
   attachEventListeners();
-  attachChartNavigationListeners();
-  addChartCanvasEvents();
+  setDateRangeSelection("ALL");
+  clearAllPanels();
 
-  await checkHealth();
+  const backendHealthy = await checkHealth();
+  await loadStrategyMetadata();
 
-  const universeSelect = document.getElementById("universeSelect");
-  if (universeSelect && universeSelect.value) {
-    selectedUniverse = universeSelect.value;
-  }
-
-  try {
-    if (isNeuralStrategySelected()) {
-      selectedUniverse = "full";
-      updateStrategyControlState();
-    }
-    await loadUniverse(selectedUniverse);
-    await runBacktest();
-  } catch (error) {
-    console.error(error);
-    setStrategyStatus(error.message || "Unable to initialize the dashboard.");
+  if (backendHealthy) {
+    await runStrategies();
+  } else {
+    setDashboardStatus("Backend unavailable. Start the server, then reload the page.");
   }
 }
 
-initializeDashboard();
+function clearAllPanels() {
+  STRATEGY_KEYS.forEach((strategy) => {
+    clearStrategyPanel(strategy, "Run strategies to load this tab.");
+  });
+}
 
+initializeDashboard();
