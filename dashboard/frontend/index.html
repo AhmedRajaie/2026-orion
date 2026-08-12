@@ -12,7 +12,7 @@
     <header class="topbar">
       <div>
         <p class="eyebrow">EGX Strategy Lab</p>
-        <h1>MA Crossover Walk-Forward Backtester</h1>
+        <h1>Backtests, Leaderboard & Market Chat</h1>
       </div>
       <div class="topbar__actions">
         <span id="backendBadge" class="badge">backend: checking…</span>
@@ -21,10 +21,15 @@
       </div>
     </header>
 
-    <nav class="tabs" role="tablist" aria-label="Dashboard sections">
-      <button class="tab-btn active" type="button" role="tab" aria-selected="true" data-tab="single">Single-Stock Backtest</button>
-      <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="leaderboard">Strategy Leaderboard</button>
-      <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="reference">Reference Comparison</button>
+    <nav class="section-switcher" aria-label="Dashboard sections">
+      <span class="section-switcher__label">Viewing</span>
+      <div class="select-wrap">
+        <select id="sectionSelect" aria-label="Choose dashboard section">
+          <option value="single">📈 Single-Stock Backtest</option>
+          <option value="leaderboard">🏆 Strategy Leaderboard</option>
+          <option value="reference">📚 Reference Comparison</option>
+        </select>
+      </div>
     </nav>
 
     <!-- ============================== TAB: Single-Stock Backtest ============================== -->
@@ -101,6 +106,18 @@
             </div>
           </article>
         </div>
+
+        <article id="newsPanel" class="panel summary-card news-panel">
+          <div class="panel__header panel__header--tight">
+            <div>
+              <h3>📰 Latest News & Sentiment</h3>
+              <p>Sample headlines for the selected stock, scored and summarized by an LLM — not a live news feed.</p>
+            </div>
+            <span id="newsSentimentBadge" class="pill pill--neutral">—</span>
+          </div>
+          <ul id="newsHeadlineList" class="news-headline-list"></ul>
+          <p id="newsSummary" class="news-summary"></p>
+        </article>
 
         <div class="content-grid">
           <article class="panel summary-card">
@@ -323,6 +340,28 @@
           <div id="referenceSeedSummary" class="summary-list"></div>
         </article>
       </div>
+    </section>
+
+    <!-- ============================== Site-wide chat widget ============================== -->
+    <button id="chatFab" class="chat-fab" type="button" aria-label="Open chat with Bull" title="Chat with Bull">🐂</button>
+
+    <section id="chatPanel" class="chat-panel" hidden>
+      <header class="chat-panel__header">
+        <div>
+          <strong>🐂 Bull</strong>
+          <span class="chat-panel__subtitle">your aggressively hyped dashboard analyst</span>
+        </div>
+        <button id="chatCloseBtn" class="icon-btn" type="button" aria-label="Close chat">✕</button>
+      </header>
+      <div id="chatMessages" class="chat-messages">
+        <div class="chat-msg chat-msg--bot">
+          LISTEN UP. 🐂 I'm Bull, and I live for this dashboard's numbers. Ask me about the best strategy, the benchmark, this stock's news sentiment — anything on screen right now. I hype hard but I never make up a number. Let's GO.
+        </div>
+      </div>
+      <form id="chatForm" class="chat-input-row">
+        <input id="chatInput" type="text" placeholder="Ask Bull about this dashboard…" autocomplete="off" />
+        <button id="chatSendBtn" class="btn btn--primary" type="submit">Send</button>
+      </form>
     </section>
   </div>
 

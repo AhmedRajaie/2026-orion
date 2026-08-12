@@ -4,6 +4,9 @@ const state = {
   assets: [],
   results: null,
   strategyPerformance: null,
+  newsSentiment: null,
+  chatHistory: [],
+  chatOpen: false,
   theme: "dark",
   charts: {},
 };
@@ -48,6 +51,18 @@ const els = {
   tradeSort: document.getElementById("tradeSort"),
   fullscreenBtn: document.getElementById("fullscreenBtn"),
   downloadBtn: document.getElementById("downloadBtn"),
+  sectionSelect: document.getElementById("sectionSelect"),
+  newsPanel: document.getElementById("newsPanel"),
+  newsSentimentBadge: document.getElementById("newsSentimentBadge"),
+  newsHeadlineList: document.getElementById("newsHeadlineList"),
+  newsSummary: document.getElementById("newsSummary"),
+  chatFab: document.getElementById("chatFab"),
+  chatPanel: document.getElementById("chatPanel"),
+  chatCloseBtn: document.getElementById("chatCloseBtn"),
+  chatMessages: document.getElementById("chatMessages"),
+  chatForm: document.getElementById("chatForm"),
+  chatInput: document.getElementById("chatInput"),
+  chatSendBtn: document.getElementById("chatSendBtn"),
 };
 
 function setBanner(message, kind = "") {
@@ -150,6 +165,7 @@ async function runBacktest() {
     state.strategyPerformance = strategyPerformance;
     renderResults(backtestResult);
     renderStrategyPerformance(strategyPerformance, backtestResult);
+    loadNewsSentiment(payload.symbol);
     setBanner(`Backtest complete for ${backtestResult.symbol}.`, "success");
   } catch (e) {
     setBanner(e.message || "Backtest failed.", "error");
@@ -223,23 +239,17 @@ function destroyStrategyCharts() {
   });
 }
 
-function initTabs() {
-  const buttons = document.querySelectorAll(".tab-btn");
+function initSectionSwitcher() {
   const pages = document.querySelectorAll(".tab-page");
-  buttons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      buttons.forEach((b) => {
-        b.classList.toggle("active", b === btn);
-        b.setAttribute("aria-selected", b === btn ? "true" : "false");
-      });
-      pages.forEach((page) => {
-        page.hidden = page.dataset.tabPage !== btn.dataset.tab;
-      });
-      // Charts created while their tab was hidden measure a zero-size canvas;
-      // force a re-measure now that the tab is visible.
-      requestAnimationFrame(() => {
-        Object.values(state.charts).forEach((chart) => chart.resize());
-      });
+  els.sectionSelect.addEventListener("change", () => {
+    const target = els.sectionSelect.value;
+    pages.forEach((page) => {
+      page.hidden = page.dataset.tabPage !== target;
+    });
+    // Charts created while their section was hidden measure a zero-size canvas;
+    // force a re-measure now that the section is visible.
+    requestAnimationFrame(() => {
+      Object.values(state.charts).forEach((chart) => chart.resize());
     });
   });
 }
@@ -402,6 +412,37 @@ function renderResults(result) {
   renderSummary(result);
   renderCharts(result);
   renderTrades(result);
+}
+
+async function loadNewsSentiment(symbol) {
+  els.newsSentimentBadge.textContent = "loading…";
+  els.newsSentimentBadge.className = "pill pill--neutral";
+  els.newsHeadlineList.innerHTML = "";
+  els.newsSummary.textContent = "";
+  try {
+    const r = await fetch(`${API}/api/news-sentiment?symbol=${encodeURIComponent(symbol)}`);
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "News sentiment failed");
+    state.newsSentiment = data;
+    renderNewsSentiment(data);
+  } catch (e) {
+    els.newsSentimentBadge.textContent = "unavailable";
+    els.newsSummary.textContent = "Could not load news sentiment for this stock right now.";
+  }
+}
+
+function renderNewsSentiment(data) {
+  const score = Number(data.score || 0);
+  const cls = score > 0.15 ? "pill--positive" : score < -0.15 ? "pill--negative" : "pill--neutral";
+  const label = score > 0.15 ? "Bullish tone" : score < -0.15 ? "Bearish tone" : "Neutral tone";
+  els.newsSentimentBadge.className = `pill ${cls}`;
+  els.newsSentimentBadge.textContent = `${label} (${score.toFixed(2)})`;
+
+  els.newsHeadlineList.innerHTML = (data.headlines || []).length
+    ? data.headlines.map((h) => `<li>${h}</li>`).join("")
+    : '<li>No sample headlines for this stock in this demo dataset.</li>';
+
+  els.newsSummary.textContent = data.summary || "";
 }
 
 function renderStrategyPerformance(performance, baseResult) {
@@ -642,6 +683,83 @@ function renderReferenceComparison(reference, best) {
   ].filter(Boolean).map((line) => `<div>${line}</div>`).join("");
 }
 
+function toggleChat(open) {
+  state.chatOpen = open ?? !state.chatOpen;
+  els.chatPanel.hidden = !state.chatOpen;
+  if (state.chatOpen) els.chatInput.focus();
+}
+
+function appendChatMessage(role, text) {
+  const bubble = document.createElement("div");
+  bubble.className = `chat-msg chat-msg--${role === "user" ? "user" : "bot"}`;
+  bubble.textContent = text;
+  els.chatMessages.appendChild(bubble);
+  els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+  return bubble;
+}
+
+function buildChatContext() {
+  const perf = state.strategyPerformance;
+  const context = { selected_symbol: els.assetSelect?.value || null };
+  if (state.results) {
+    context.selected_stock_backtest = {
+      symbol: state.results.symbol,
+      return_percent: state.results.return_percent,
+      max_drawdown_percent: state.results.max_drawdown_percent,
+      final_value: state.results.final_value,
+    };
+  }
+  if (state.newsSentiment) context.news_sentiment = state.newsSentiment;
+  if (perf) {
+    const pick = (r) => r && { return_percent: r.return_percent, max_drawdown_percent: r.max_drawdown_percent, sharpe: r.sharpe, final_value: r.final_value };
+    context.ma_crossover = pick(perf.ma_crossover);
+    context.weekly_mean_reversion = pick(perf.weekly_mean_reversion);
+    context.tiktok_strategy = pick(perf.tiktok_strategy);
+    if (perf.best_strategy) {
+      context.best_strategy = {
+        name: perf.best_strategy.name,
+        model_type: perf.best_strategy.model_type,
+        weighting_method: perf.best_strategy.weighting_method,
+        universe_size: perf.best_strategy.universe?.length,
+        metrics: perf.best_strategy.best_strategy_metrics,
+        seed_stability: perf.best_strategy.seed_stability,
+        comparison_table: perf.best_strategy.comparison_table,
+      };
+    }
+  }
+  return context;
+}
+
+async function sendChatMessage(event) {
+  event.preventDefault();
+  const message = els.chatInput.value.trim();
+  if (!message) return;
+  els.chatInput.value = "";
+  els.chatSendBtn.disabled = true;
+  appendChatMessage("user", message);
+  const pending = appendChatMessage("bot", "🐂 hyping up an answer…");
+  pending.classList.add("chat-msg--pending");
+
+  try {
+    const r = await fetch(`${API}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, history: state.chatHistory, context: buildChatContext() }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || "Chat failed");
+    pending.classList.remove("chat-msg--pending");
+    pending.textContent = data.reply;
+    state.chatHistory.push({ role: "user", content: message }, { role: "assistant", content: data.reply });
+    if (state.chatHistory.length > 20) state.chatHistory = state.chatHistory.slice(-20);
+  } catch (e) {
+    pending.classList.remove("chat-msg--pending");
+    pending.textContent = "🐂 Even I can't hype my way past a backend error right now. Try again in a sec.";
+  } finally {
+    els.chatSendBtn.disabled = false;
+  }
+}
+
 function resetForm() {
   els.assetSelect.value = state.assets[0] || "";
   els.initialCash.value = "1000";
@@ -659,6 +777,11 @@ function resetForm() {
   els.referenceEmptyState.hidden = false;
   els.referenceContent.hidden = true;
   els.kpiRow.innerHTML = "";
+  els.newsSentimentBadge.textContent = "—";
+  els.newsSentimentBadge.className = "pill pill--neutral";
+  els.newsHeadlineList.innerHTML = "";
+  els.newsSummary.textContent = "";
+  state.newsSentiment = null;
   destroyCharts();
 }
 
@@ -697,13 +820,17 @@ function bindEvents() {
       event.preventDefault();
       runBacktest();
     }
+    if (event.key === "Escape" && state.chatOpen) toggleChat(false);
   });
+  els.chatFab.addEventListener("click", () => toggleChat());
+  els.chatCloseBtn.addEventListener("click", () => toggleChat(false));
+  els.chatForm.addEventListener("submit", sendChatMessage);
 }
 
 async function init() {
   setTheme("dark");
   bindEvents();
-  initTabs();
+  initSectionSwitcher();
   await checkHealth();
   await loadAssets();
   setLoading(false);

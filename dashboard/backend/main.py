@@ -3,10 +3,13 @@ Run: uv run uvicorn dashboard.backend.main:app --reload --port 8000
 """
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from .llm_service import chat_reply, get_news_sentiment
 from .strategy_service import (
     list_assets,
     load_json_artifact,
@@ -26,6 +29,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1)
+    history: list[dict[str, str]] = Field(default_factory=list)
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 class BacktestRequest(BaseModel):
@@ -118,3 +127,26 @@ def strategy_performance(
         # mine-vs-reference comparison. None if those notebooks are missing.
         "reference_notebooks": load_reference_notebook_results(),
     })
+
+
+@app.get("/api/news-sentiment")
+def news_sentiment(symbol: str) -> dict:
+    """Day 4 -- news-sentiment extra. Sample-headline sentiment score + LLM
+    summary for one symbol. Not a real news feed (no external APIs in this
+    project) -- response is always labeled `is_sample_data: True`."""
+    try:
+        return to_jsonable(get_news_sentiment(symbol.upper()))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="News sentiment failed") from exc
+
+
+@app.post("/api/chat")
+def chat_endpoint(request: ChatRequest) -> dict:
+    """Day 4 -- dashboard chat agent. Grounded in whatever dashboard data the
+    frontend passes in `context` (already-fetched strategy performance, the
+    selected symbol, etc.) so it answers from real numbers, not guesses."""
+    try:
+        reply = chat_reply(request.message, history=request.history, context=request.context)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Chat failed") from exc
+    return {"reply": reply}
