@@ -1,1280 +1,1010 @@
-const API = "http://127.0.0.1:8000";
+from pathlib import Path
+import json
+import sys
+
+import numpy as np
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 
-// ============================================================
-// CURRENT UNIVERSE
-// ============================================================
+# ============================================================
+# PROJECT PATH
+# ============================================================
 
-let currentUniverse = "small";
+BASE_DIR = Path(__file__).resolve().parents[2]
 
+SRC_DIR = BASE_DIR / "src"
 
-// ============================================================
-// CHART REFERENCES
-// ============================================================
-
-let priceChart = null;
-
-let equityChart = null;
-
-let strategyChart = null;
-
-let drawdownChart = null;
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 
-// ============================================================
-// HELPER
-// ============================================================
+# ============================================================
+# TRADINGLAB
+# ============================================================
 
-function universeURL(endpoint) {
+from tradinglab.data_feed import DataFeed
+from tradinglab.simulator import PortfolioSimulator
+from tradinglab.backtester import run_backtest
+from tradinglab.strategies.sma import sma_crossover_weights
+from tradinglab.charting import turnover_summary
 
-    return (
-        API +
-        endpoint +
-        "?universe=" +
-        encodeURIComponent(
-            currentUniverse
+
+# ============================================================
+# APP
+# ============================================================
+
+app = FastAPI(
+    title="Trading Dashboard API",
+    version="1.0.0",
+)
+
+
+# ============================================================
+# CORS
+# ============================================================
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ============================================================
+# DATA
+# ============================================================
+
+DATA_PATH = BASE_DIR / "data" / "egx"
+
+RESULTS_PATH = (
+    BASE_DIR
+    / "dashboard"
+    / "data"
+    / "model_results.json"
+)
+
+
+# ============================================================
+# LOAD EGX DATA
+# ============================================================
+
+try:
+
+    feed = DataFeed.from_dir(
+        str(DATA_PATH)
+    )
+
+    print(
+        "Loaded stocks:",
+        feed.symbols
+    )
+
+except Exception as e:
+
+    feed = None
+
+    print(
+        "ERROR loading DataFeed:",
+        e
+    )
+
+
+# ============================================================
+# BACKTEST SETTINGS
+# ============================================================
+
+START_CAPITAL = 1000.0
+
+LOOKBACK = 30
+
+
+# ============================================================
+# NEW STRATEGY
+# SMA20 + MOMENTUM
+# ============================================================
+
+def momentum_sma_weights(
+    observation,
+    sma_window=20,
+    momentum_window=5
+):
+    """
+    New Strategy:
+
+    Select a stock when:
+
+    1. Current close > SMA20
+    2. 5-day momentum > 0
+
+    Selected stocks receive equal weights.
+
+    If no stock qualifies,
+    hold cash.
+    """
+
+    observation = np.asarray(
+        observation,
+        dtype=float
+    )
+
+    # Expected shape:
+    #
+    # (number_of_stocks,
+    #  lookback_days,
+    #  features)
+
+    n_assets, n_days, n_features = (
+        observation.shape
+    )
+
+    # TradingLab OHLCV-style observation:
+    # close = feature index 3
+
+    CLOSE_INDEX = 3
+
+    prices = observation[
+        :,
+        :,
+        CLOSE_INDEX
+    ]
+
+    # --------------------------------------------------------
+    # Check enough history
+    # --------------------------------------------------------
+
+    if n_days < max(
+        sma_window,
+        momentum_window + 1
+    ):
+        return np.zeros(
+            n_assets,
+            dtype=float
         )
-    );
-}
+
+    # --------------------------------------------------------
+    # Current prices
+    # --------------------------------------------------------
+
+    current_prices = prices[:, -1]
+
+    # --------------------------------------------------------
+    # SMA20
+    # --------------------------------------------------------
+
+    sma20 = np.mean(
+        prices[:, -sma_window:],
+        axis=1
+    )
+
+    # --------------------------------------------------------
+    # 5-day momentum
+    # --------------------------------------------------------
+
+    previous_prices = prices[
+        :,
+        -(momentum_window + 1)
+    ]
+
+    momentum = (
+        current_prices / previous_prices
+    ) - 1
+
+    # --------------------------------------------------------
+    # Conditions
+    # --------------------------------------------------------
+
+    above_sma = (
+        current_prices > sma20
+    )
+
+    positive_momentum = (
+        momentum > 0
+    )
+
+    selected = (
+        above_sma
+        &
+        positive_momentum
+    )
+
+    # --------------------------------------------------------
+    # Create weights
+    # --------------------------------------------------------
+
+    weights = np.zeros(
+        n_assets,
+        dtype=float
+    )
+
+    number_selected = np.sum(
+        selected
+    )
+
+    if number_selected > 0:
+
+        weights[selected] = (
+            1.0 / number_selected
+        )
+
+    return weights
 
 
-// ============================================================
-// CHECK BACKEND
-// ============================================================
+# ============================================================
+# HEALTH
+# ============================================================
 
-async function checkHealth() {
+@app.get("/health")
+def health():
 
-    try {
-
-        const response =
-            await fetch(
-                API + "/health"
-            );
-
-
-        if (!response.ok) {
-
-            throw new Error(
-                "Backend returned " +
-                response.status
-            );
-
-        }
-
-
-        const data =
-            await response.json();
-
-
-        document.getElementById(
-            "status"
-        ).textContent =
-            "🟢 Backend : " +
-            data.status;
-
+    return {
+        "status": "ok"
     }
 
-    catch (error) {
 
-        document.getElementById(
-            "status"
-        ).textContent =
-            "🔴 Backend not reachable";
+# ============================================================
+# ROOT
+# ============================================================
 
-        console.error(
-            "Health error:",
-            error
-        );
+@app.get("/")
+def root():
+
+    return {
+        "message":
+            "Trading Dashboard API is running",
+
+        "health":
+            "/health",
+
+        "symbols":
+            "/symbols",
+
+        "stock":
+            "/stock/{symbol}",
+
+        "strategy_comparison":
+            "/strategy-comparison",
+
+        "model_results":
+            "/model-results",
     }
-}
 
 
-// ============================================================
-// LOAD UNIVERSE
-// ============================================================
+# ============================================================
+# SYMBOLS
+# ============================================================
 
-async function loadUniverse() {
+@app.get("/symbols")
+def get_symbols():
 
-    try {
+    if feed is None:
 
-        const response =
-            await fetch(
-                universeURL(
-                    "/universe"
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "DataFeed could not be loaded."
+            )
+        )
+
+    return {
+        "symbols":
+            list(feed.symbols)
+    }
+
+
+# ============================================================
+# STOCK DATA
+# ============================================================
+
+@app.get("/stock/{symbol}")
+def get_stock(symbol: str):
+
+    if feed is None:
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "DataFeed could not be loaded."
+            )
+        )
+
+    symbol = symbol.upper()
+
+    if symbol not in feed.symbols:
+
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Stock {symbol} not found."
+            )
+        )
+
+    asset = list(
+        feed.symbols
+    ).index(symbol)
+
+    # --------------------------------------------------------
+    # Closing prices
+    # --------------------------------------------------------
+
+    close = feed.close[:, asset]
+
+    prices = []
+
+    for i, value in enumerate(close):
+
+        if value is None:
+            continue
+
+        try:
+
+            price = float(value)
+
+            if price != price:
+                continue
+
+            prices.append(
+                {
+                    "day": i,
+                    "close": price
+                }
+            )
+
+        except Exception:
+            continue
+
+    # --------------------------------------------------------
+    # Basic indicators
+    # --------------------------------------------------------
+
+    closes = [
+        x["close"]
+        for x in prices
+    ]
+
+    sma9 = []
+
+    sma20 = []
+
+    for i in range(
+        len(closes)
+    ):
+
+        # SMA 9
+
+        if i < 8:
+
+            sma9.append(None)
+
+        else:
+
+            sma9.append(
+                sum(
+                    closes[
+                        i - 8:i + 1
+                    ]
+                ) / 9
+            )
+
+        # SMA 20
+
+        if i < 19:
+
+            sma20.append(None)
+
+        else:
+
+            sma20.append(
+                sum(
+                    closes[
+                        i - 19:i + 1
+                    ]
+                ) / 20
+            )
+
+    # --------------------------------------------------------
+    # Add indicators
+    # --------------------------------------------------------
+
+    for i in range(
+        len(prices)
+    ):
+
+        prices[i]["sma9"] = (
+            sma9[i]
+        )
+
+        prices[i]["sma20"] = (
+            sma20[i]
+        )
+
+    # --------------------------------------------------------
+    # Current price
+    # --------------------------------------------------------
+
+    current_price = (
+        closes[-1]
+        if closes
+        else None
+    )
+
+    return {
+        "symbol": symbol,
+
+        "current_price":
+            current_price,
+
+        "data":
+            prices
+    }
+
+
+# ============================================================
+# STRATEGY COMPARISON
+# ============================================================
+
+@app.get("/strategy-comparison")
+def strategy_comparison():
+
+    if feed is None:
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "DataFeed could not be loaded."
+            )
+        )
+
+    try:
+
+        print(
+            "Running strategy comparison..."
+        )
+
+        # ----------------------------------------------------
+        # SIMULATOR
+        # ----------------------------------------------------
+
+        sim = PortfolioSimulator(
+            feed
+        )
+
+        # ----------------------------------------------------
+        # BASE STRATEGY
+        # SMA 9/20
+        # ----------------------------------------------------
+
+        base_result = run_backtest(
+            sim,
+
+            lambda observation:
+                sma_crossover_weights(
+                    observation,
+                    9,
+                    20
+                ),
+
+            lookback=LOOKBACK
+        )
+
+        # ----------------------------------------------------
+        # NEW STRATEGY
+        # SMA20 + MOMENTUM
+        # ----------------------------------------------------
+
+        new_result = run_backtest(
+            sim,
+
+            momentum_sma_weights,
+
+            lookback=LOOKBACK
+        )
+
+        # ====================================================
+        # HELPER FUNCTIONS
+        # ====================================================
+
+        def calculate_total_return(
+            returns
+        ):
+
+            returns = np.asarray(
+                returns,
+                dtype=float
+            )
+
+            return float(
+                np.prod(
+                    1 + returns
+                ) - 1
+            )
+
+
+        def calculate_max_drawdown(
+            returns
+        ):
+
+            returns = np.asarray(
+                returns,
+                dtype=float
+            )
+
+            curve = np.cumprod(
+                1 + returns
+            )
+
+            peak = np.maximum.accumulate(
+                curve
+            )
+
+            drawdown = (
+                peak - curve
+            ) / peak
+
+            return float(
+                np.max(drawdown)
+            )
+
+
+        def calculate_sharpe(
+            returns
+        ):
+
+            returns = np.asarray(
+                returns,
+                dtype=float
+            )
+
+            if (
+                len(returns) > 1
+                and np.std(returns) > 0
+            ):
+
+                return float(
+                    (
+                        np.mean(returns)
+                        /
+                        np.std(returns)
+                    )
+                    *
+                    np.sqrt(252)
                 )
-            );
+
+            return 0.0
 
 
-        if (!response.ok) {
+        # ====================================================
+        # BASE METRICS
+        # ====================================================
 
-            throw new Error(
-                "Universe request failed: " +
-                response.status
-            );
+        base_returns = np.asarray(
+            base_result[
+                "portfolio_returns"
+            ],
+            dtype=float
+        )
 
-        }
+        base_portfolio = np.asarray(
+            base_result[
+                "portfolio"
+            ],
+            dtype=float
+        )
+
+        base_final_value = float(
+            base_portfolio[-1]
+            *
+            START_CAPITAL
+        )
+
+        base_total_return = (
+            calculate_total_return(
+                base_returns
+            )
+        )
+
+        base_max_drawdown = (
+            calculate_max_drawdown(
+                base_returns
+            )
+        )
+
+        base_sharpe = (
+            calculate_sharpe(
+                base_returns
+            )
+        )
+
+        base_summary = (
+            turnover_summary(
+                base_result[
+                    "weights"
+                ]
+            )
+        )
+
+        base_total_trades = int(
+            base_summary[
+                "total_trades"
+            ]
+        )
 
 
-        const data =
-            await response.json();
+        # ====================================================
+        # NEW STRATEGY METRICS
+        # ====================================================
+
+        new_returns = np.asarray(
+            new_result[
+                "portfolio_returns"
+            ],
+            dtype=float
+        )
+
+        new_portfolio = np.asarray(
+            new_result[
+                "portfolio"
+            ],
+            dtype=float
+        )
+
+        new_final_value = float(
+            new_portfolio[-1]
+            *
+            START_CAPITAL
+        )
+
+        new_total_return = (
+            calculate_total_return(
+                new_returns
+            )
+        )
+
+        new_max_drawdown = (
+            calculate_max_drawdown(
+                new_returns
+            )
+        )
+
+        new_sharpe = (
+            calculate_sharpe(
+                new_returns
+            )
+        )
+
+        new_summary = (
+            turnover_summary(
+                new_result[
+                    "weights"
+                ]
+            )
+        )
+
+        new_total_trades = int(
+            new_summary[
+                "total_trades"
+            ]
+        )
 
 
-        const select =
-            document.getElementById(
-                "stockSelect"
-            );
+        # ====================================================
+        # EQUITY CURVES
+        # ====================================================
+
+        base_curve = (
+            base_portfolio
+            *
+            START_CAPITAL
+        )
+
+        new_curve = (
+            new_portfolio
+            *
+            START_CAPITAL
+        )
 
 
-        select.innerHTML = "";
+        # ====================================================
+        # DRAWDOWN CURVES
+        # ====================================================
+
+        base_equity = np.cumprod(
+            1 + base_returns
+        )
+
+        new_equity = np.cumprod(
+            1 + new_returns
+        )
+
+        base_peak = np.maximum.accumulate(
+            base_equity
+        )
+
+        new_peak = np.maximum.accumulate(
+            new_equity
+        )
+
+        base_drawdown = (
+            base_peak - base_equity
+        ) / base_peak
+
+        new_drawdown = (
+            new_peak - new_equity
+        ) / new_peak
 
 
-        data.symbols.forEach(
-            symbol => {
+        # ====================================================
+        # DATES
+        # ====================================================
 
-                const option =
-                    document.createElement(
-                        "option"
-                    );
+        dates = [
+            str(date)
+            for date in
+            base_result["dates"]
+        ]
 
-                option.value =
-                    symbol;
 
-                option.textContent =
-                    symbol;
-
-                select.appendChild(
-                    option
-                );
-
-            }
-        );
-
+        # ====================================================
+        # WINNER
+        # ====================================================
 
         if (
-            data.symbols.length > 0
-        ) {
+            base_final_value
+            >
+            new_final_value
+        ):
 
-            await loadStock(
-                data.symbols[0]
-            );
+            winner = (
+                "Base Strategy — SMA 9/20"
+            )
 
-        }
+        elif (
+            new_final_value
+            >
+            base_final_value
+        ):
 
-    }
+            winner = (
+                "New Strategy — SMA20 + Momentum"
+            )
 
-    catch (error) {
+        else:
 
-        console.error(
-            "Universe error:",
-            error
-        );
+            winner = (
+                "Both strategies have equal "
+                "final value."
+            )
 
-        document.getElementById(
-            "stockSelect"
-        ).innerHTML =
-            "<option>Error loading stocks</option>";
-    }
-}
 
+        # ====================================================
+        # PRINT RESULTS
+        # ====================================================
 
-// ============================================================
-// LOAD STOCK
-// ============================================================
+        print(
+            "Base final value:",
+            base_final_value
+        )
 
-async function loadStock(symbol) {
+        print(
+            "Base total return:",
+            base_total_return
+        )
 
-    try {
+        print(
+            "Base max drawdown:",
+            base_max_drawdown
+        )
 
-        const response =
-            await fetch(
-                universeURL(
-                    "/prices/" +
-                    encodeURIComponent(
-                        symbol
-                    )
-                )
-            );
+        print(
+            "Base Sharpe:",
+            base_sharpe
+        )
 
+        print(
+            "Base trades:",
+            base_total_trades
+        )
 
-        if (!response.ok) {
+        print(
+            "New final value:",
+            new_final_value
+        )
 
-            throw new Error(
-                "Stock request failed: " +
-                response.status
-            );
+        print(
+            "New total return:",
+            new_total_return
+        )
 
-        }
+        print(
+            "New max drawdown:",
+            new_max_drawdown
+        )
 
+        print(
+            "New Sharpe:",
+            new_sharpe
+        )
 
-        const data =
-            await response.json();
+        print(
+            "New trades:",
+            new_total_trades
+        )
 
 
-        // ----------------------------------------------------
-        // SYMBOL
-        // ----------------------------------------------------
+        # ====================================================
+        # RESPONSE
+        # ====================================================
 
-        document.getElementById(
-            "symbol"
-        ).textContent =
-            data.symbol;
+        return {
 
+            "status": "ok",
 
-        // ----------------------------------------------------
-        // CURRENT PRICE
-        // ----------------------------------------------------
+            "settings": {
 
-        const lastPrice =
-            data.price[
-                data.price.length - 1
-            ];
+                "start_capital":
+                    START_CAPITAL,
 
+                "lookback":
+                    LOOKBACK
+            },
 
-        document.getElementById(
-            "currentPrice"
-        ).textContent =
-            Number(lastPrice).toFixed(2) +
-            " EGP";
+            "base_strategy": {
 
+                "name":
+                    "SMA 9/20",
 
-        // ----------------------------------------------------
-        // PRICE CHART
-        // ----------------------------------------------------
+                "final_value":
+                    base_final_value,
 
-        createPriceChart(
-            data
-        );
+                "total_return":
+                    base_total_return,
 
-    }
+                "max_drawdown":
+                    base_max_drawdown,
 
-    catch (error) {
+                "sharpe":
+                    base_sharpe,
 
-        console.error(
-            "Stock loading error:",
-            error
-        );
+                "total_trades":
+                    base_total_trades
+            },
 
-        document.getElementById(
-            "symbol"
-        ).textContent =
-            "-";
+            "new_strategy": {
 
-        document.getElementById(
-            "currentPrice"
-        ).textContent =
-            "-";
-    }
-}
+                "name":
+                    "SMA20 + Momentum",
 
+                "final_value":
+                    new_final_value,
 
-// ============================================================
-// PRICE CHART
-// ============================================================
+                "total_return":
+                    new_total_return,
 
-function createPriceChart(data) {
+                "max_drawdown":
+                    new_max_drawdown,
 
-    const canvas =
-        document.getElementById(
-            "priceChart"
-        );
+                "sharpe":
+                    new_sharpe,
 
+                "total_trades":
+                    new_total_trades
+            },
 
-    if (priceChart !== null) {
+            "winner":
+                winner,
 
-        priceChart.destroy();
+            "dates":
+                dates,
 
-    }
+            "curves": {
 
+                "base":
+                    base_curve.tolist(),
 
-    priceChart =
-        new Chart(
-            canvas,
-            {
+                "new":
+                    new_curve.tolist()
+            },
 
-                type: "line",
+            "drawdowns": {
 
-                data: {
+                "base":
+                    (
+                        -base_drawdown
+                        * 100
+                    ).tolist(),
 
-                    labels:
-                        data.dates,
-
-                    datasets: [
-
-                        {
-
-                            label:
-                                "Close Price",
-
-                            data:
-                                data.price,
-
-                            pointRadius:
-                                0,
-
-                            borderWidth:
-                                2,
-
-                            tension:
-                                0.2
-
-                        },
-
-                        {
-
-                            label:
-                                "SMA 9",
-
-                            data:
-                                data.ma9,
-
-                            pointRadius:
-                                0,
-
-                            borderWidth:
-                                1.5,
-
-                            tension:
-                                0.2
-
-                        },
-
-                        {
-
-                            label:
-                                "SMA 20",
-
-                            data:
-                                data.ma20,
-
-                            pointRadius:
-                                0,
-
-                            borderWidth:
-                                1.5,
-
-                            tension:
-                                0.2
-
-                        }
-
-                    ]
-
-                },
-
-                options: {
-
-                    responsive:
-                        true,
-
-                    maintainAspectRatio:
-                        false,
-
-                    interaction: {
-
-                        mode:
-                            "index",
-
-                        intersect:
-                            false
-
-                    },
-
-                    plugins: {
-
-                        legend: {
-
-                            display:
-                                true
-
-                        }
-
-                    },
-
-                    scales: {
-
-                        x: {
-
-                            ticks: {
-
-                                maxTicksLimit:
-                                    12
-
-                            }
-
-                        }
-
-                    }
-
-                }
-
+                "new":
+                    (
+                        -new_drawdown
+                        * 100
+                    ).tolist()
             }
-        );
-}
-
-
-// ============================================================
-// LOAD EQUITY CURVE
-// ============================================================
-
-async function loadEquityCurve() {
-
-    try {
-
-        const response =
-            await fetch(
-                universeURL(
-                    "/backtest"
-                )
-            );
-
-
-        if (!response.ok) {
-
-            throw new Error(
-                "Backtest request failed: " +
-                response.status
-            );
-
         }
 
 
-        const data =
-            await response.json();
+    except Exception as e:
 
+        print(
+            "Strategy comparison error:",
+            repr(e)
+        )
 
-        createEquityChart(
-            data
-        );
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
-    }
 
-    catch (error) {
+# ============================================================
+# MODEL RESULTS
+# ============================================================
 
-        console.error(
-            "Equity error:",
-            error
-        );
-    }
-}
+@app.get("/model-results")
+def model_results():
 
+    if not RESULTS_PATH.exists():
 
-// ============================================================
-// EQUITY CHART
-// ============================================================
+        return {
 
-function createEquityChart(data) {
+            "status":
+                "not_found",
 
-    const canvas =
-        document.getElementById(
-            "equityChart"
-        );
+            "message":
+                "model_results.json "
+                "has not been created yet.",
 
+            "train_losses":
+                [],
 
-    if (equityChart !== null) {
+            "test_losses":
+                [],
 
-        equityChart.destroy();
+            "predictions":
+                [],
 
-    }
-
-
-    equityChart =
-        new Chart(
-            canvas,
-            {
-
-                type: "line",
-
-                data: {
-
-                    labels:
-                        data.dates,
-
-                    datasets: [
-
-                        {
-
-                            label:
-                                "SMA 9/20 Strategy",
-
-                            data:
-                                data.portfolio,
-
-                            pointRadius:
-                                0,
-
-                            borderWidth:
-                                2,
-
-                            tension:
-                                0.15
-
-                        },
-
-                        {
-
-                            label:
-                                "Benchmark",
-
-                            data:
-                                data.benchmark,
-
-                            pointRadius:
-                                0,
-
-                            borderWidth:
-                                2,
-
-                            borderDash:
-                                [6, 5],
-
-                            tension:
-                                0.15
-
-                        }
-
-                    ]
-
-                },
-
-                options: {
-
-                    responsive:
-                        true,
-
-                    maintainAspectRatio:
-                        false,
-
-                    interaction: {
-
-                        mode:
-                            "index",
-
-                        intersect:
-                            false
-
-                    },
-
-                    plugins: {
-
-                        title: {
-
-                            display:
-                                true,
-
-                            text:
-                                "Strategy vs Benchmark"
-                        }
-
-                    },
-
-                    scales: {
-
-                        x: {
-
-                            ticks: {
-
-                                maxTicksLimit:
-                                    12
-
-                            }
-
-                        }
-
-                    }
-
-                }
-
-            }
-        );
-}
-
-
-// ============================================================
-// LOAD METRICS
-// ============================================================
-
-async function loadMetrics() {
-
-    try {
-
-        const response =
-            await fetch(
-                universeURL(
-                    "/metrics"
-                )
-            );
-
-
-        if (!response.ok) {
-
-            throw new Error(
-                "Metrics request failed: " +
-                response.status
-            );
-
+            "actual":
+                []
         }
 
+    try:
 
-        const data =
-            await response.json();
+        with open(
+            RESULTS_PATH,
+            "r"
+        ) as f:
 
+            results = json.load(f)
 
-        document.getElementById(
-            "totalReturn"
-        ).textContent =
-            (
-                Number(
-                    data.total_return
-                ) * 100
-            ).toFixed(2) +
-            "%";
+        return {
 
+            "status":
+                "ok",
 
-        document.getElementById(
-            "sharpe"
-        ).textContent =
-            Number(
-                data.sharpe
-            ).toFixed(3);
-
-
-        document.getElementById(
-            "maxDrawdown"
-        ).textContent =
-            (
-                Number(
-                    data.max_drawdown
-                ) * 100
-            ).toFixed(2) +
-            "%";
-
-    }
-
-    catch (error) {
-
-        console.error(
-            "Metrics error:",
-            error
-        );
-    }
-}
-
-
-// ============================================================
-// LOAD STRATEGY PERFORMANCE
-// ============================================================
-
-async function loadStrategyPerformance() {
-
-    try {
-
-        const response =
-            await fetch(
-                universeURL(
-                    "/strategy-performance"
-                )
-            );
-
-
-        if (!response.ok) {
-
-            throw new Error(
-                "Strategy performance failed: " +
-                response.status
-            );
-
+            **results
         }
 
+    except Exception as e:
 
-        const data =
-            await response.json();
+        return {
 
+            "status":
+                "error",
 
-        // ====================================================
-        // BASE
-        // ====================================================
+            "message":
+                str(e),
 
-        document.getElementById(
-            "baseFinal"
-        ).textContent =
-            Number(
-                data.base_strategy.final_value
-            ).toFixed(2) +
-            " EGP";
+            "train_losses":
+                [],
 
+            "test_losses":
+                [],
 
-        document.getElementById(
-            "baseReturn"
-        ).textContent =
-            Number(
-                data.base_strategy.total_return
-            ).toFixed(2) +
-            "%";
+            "predictions":
+                [],
 
-
-        document.getElementById(
-            "baseDrawdown"
-        ).textContent =
-            Number(
-                data.base_strategy.max_drawdown
-            ).toFixed(2) +
-            "%";
-
-
-        document.getElementById(
-            "baseSharpe"
-        ).textContent =
-            Number(
-                data.base_strategy.sharpe
-            ).toFixed(3);
-
-
-        document.getElementById(
-            "baseTrades"
-        ).textContent =
-            data.base_strategy.total_trades;
-
-
-        // ====================================================
-        // NEW
-        // ====================================================
-
-        document.getElementById(
-            "newFinal"
-        ).textContent =
-            Number(
-                data.new_strategy.final_value
-            ).toFixed(2) +
-            " EGP";
-
-
-        document.getElementById(
-            "newReturn"
-        ).textContent =
-            Number(
-                data.new_strategy.total_return
-            ).toFixed(2) +
-            "%";
-
-
-        document.getElementById(
-            "newDrawdown"
-        ).textContent =
-            Number(
-                data.new_strategy.max_drawdown
-            ).toFixed(2) +
-            "%";
-
-
-        document.getElementById(
-            "newSharpe"
-        ).textContent =
-            Number(
-                data.new_strategy.sharpe
-            ).toFixed(3);
-
-
-        document.getElementById(
-            "newTrades"
-        ).textContent =
-            data.new_strategy.total_trades;
-
-
-        // ====================================================
-        // WINNER
-        // ====================================================
-
-        document.getElementById(
-            "winner"
-        ).textContent =
-            "🏆 Better strategy: " +
-            data.winner;
-
-
-        // ====================================================
-        // STRATEGY CURVES
-        // ====================================================
-
-        createStrategyChart(
-            data
-        );
-
-
-        // ====================================================
-        // DRAWDOWN
-        // ====================================================
-
-        createDrawdownChart(
-            data
-        );
-
-    }
-
-    catch (error) {
-
-        console.error(
-            "Strategy performance error:",
-            error
-        );
-
-        document.getElementById(
-            "winner"
-        ).textContent =
-            "⚠️ Could not load strategy performance";
-    }
-}
-
-
-// ============================================================
-// STRATEGY CURVE CHART
-// ============================================================
-
-function createStrategyChart(data) {
-
-    const canvas =
-        document.getElementById(
-            "strategyChart"
-        );
-
-
-    if (strategyChart !== null) {
-
-        strategyChart.destroy();
-
-    }
-
-
-    strategyChart =
-        new Chart(
-            canvas,
-            {
-
-                type: "line",
-
-                data: {
-
-                    labels:
-                        data.dates,
-
-                    datasets: [
-
-                        {
-
-                            label:
-                                "Base — SMA 9/20",
-
-                            data:
-                                data.base_curve,
-
-                            pointRadius:
-                                0,
-
-                            borderWidth:
-                                2,
-
-                            tension:
-                                0.15
-
-                        },
-
-                        {
-
-                            label:
-                                "New — SMA20 + Momentum",
-
-                            data:
-                                data.new_curve,
-
-                            pointRadius:
-                                0,
-
-                            borderWidth:
-                                2,
-
-                            tension:
-                                0.15
-
-                        }
-
-                    ]
-
-                },
-
-                options: {
-
-                    responsive:
-                        true,
-
-                    maintainAspectRatio:
-                        false,
-
-                    interaction: {
-
-                        mode:
-                            "index",
-
-                        intersect:
-                            false
-
-                    },
-
-                    plugins: {
-
-                        title: {
-
-                            display:
-                                true,
-
-                            text:
-                                "Strategy Performance Over Time"
-
-                        }
-
-                    },
-
-                    scales: {
-
-                        x: {
-
-                            ticks: {
-
-                                maxTicksLimit:
-                                    12
-
-                            }
-
-                        },
-
-                        y: {
-
-                            title: {
-
-                                display:
-                                    true,
-
-                                text:
-                                    "Portfolio Value (EGP)"
-
-                            }
-
-                        }
-
-                    }
-
-                }
-
-            }
-        );
-}
-
-
-// ============================================================
-// DRAWDOWN CHART
-// ============================================================
-
-function createDrawdownChart(data) {
-
-    const canvas =
-        document.getElementById(
-            "drawdownChart"
-        );
-
-
-    if (drawdownChart !== null) {
-
-        drawdownChart.destroy();
-
-    }
-
-
-    drawdownChart =
-        new Chart(
-            canvas,
-            {
-
-                type: "line",
-
-                data: {
-
-                    labels:
-                        data.dates,
-
-                    datasets: [
-
-                        {
-
-                            label:
-                                "Base — SMA 9/20",
-
-                            data:
-                                data.base_drawdown,
-
-                            pointRadius:
-                                0,
-
-                            borderWidth:
-                                2,
-
-                            tension:
-                                0.15
-
-                        },
-
-                        {
-
-                            label:
-                                "New — SMA20 + Momentum",
-
-                            data:
-                                data.new_drawdown,
-
-                            pointRadius:
-                                0,
-
-                            borderWidth:
-                                2,
-
-                            tension:
-                                0.15
-
-                        }
-
-                    ]
-
-                },
-
-                options: {
-
-                    responsive:
-                        true,
-
-                    maintainAspectRatio:
-                        false,
-
-                    interaction: {
-
-                        mode:
-                            "index",
-
-                        intersect:
-                            false
-
-                    },
-
-                    plugins: {
-
-                        title: {
-
-                            display:
-                                true,
-
-                            text:
-                                "Drawdown Over Time"
-
-                        }
-
-                    },
-
-                    scales: {
-
-                        x: {
-
-                            ticks: {
-
-                                maxTicksLimit:
-                                    12
-
-                            }
-
-                        },
-
-                        y: {
-
-                            title: {
-
-                                display:
-                                    true,
-
-                                text:
-                                    "Drawdown (%)"
-
-                            },
-
-                            ticks: {
-
-                                callback:
-                                    function(value) {
-
-                                        return value + "%";
-
-                                    }
-
-                            }
-
-                        }
-
-                    }
-
-                }
-
-            }
-        );
-}
-
-
-// ============================================================
-// REFRESH WHOLE DASHBOARD
-// ============================================================
-
-async function refreshDashboard() {
-
-    console.log(
-        "Loading universe:",
-        currentUniverse
-    );
-
-
-    // Load stocks first
-
-    await loadUniverse();
-
-
-    // Load everything else
-
-    await Promise.all([
-
-        loadEquityCurve(),
-
-        loadMetrics(),
-
-        loadStrategyPerformance()
-
-    ]);
-
-}
-
-
-// ============================================================
-// UNIVERSE BUTTONS
-// ============================================================
-
-document
-    .getElementById(
-        "smallUniverse"
-    )
-    .addEventListener(
-        "click",
-        async function() {
-
-            if (
-                currentUniverse === "small"
-            ) {
-
-                return;
-
-            }
-
-
-            currentUniverse =
-                "small";
-
-
-            document
-                .getElementById(
-                    "smallUniverse"
-                )
-                .classList
-                .add("active");
-
-
-            document
-                .getElementById(
-                    "fullUniverse"
-                )
-                .classList
-                .remove("active");
-
-
-            await refreshDashboard();
-
+            "actual":
+                []
         }
-    );
-
-
-document
-    .getElementById(
-        "fullUniverse"
-    )
-    .addEventListener(
-        "click",
-        async function() {
-
-            if (
-                currentUniverse === "full"
-            ) {
-
-                return;
-
-            }
-
-
-            currentUniverse =
-                "full";
-
-
-            document
-                .getElementById(
-                    "fullUniverse"
-                )
-                .classList
-                .add("active");
-
-
-            document
-                .getElementById(
-                    "smallUniverse"
-                )
-                .classList
-                .remove("active");
-
-
-            await refreshDashboard();
-
-        }
-    );
-
-
-// ============================================================
-// STOCK DROPDOWN
-// ============================================================
-
-document
-    .getElementById(
-        "stockSelect"
-    )
-    .addEventListener(
-        "change",
-        function() {
-
-            loadStock(
-                this.value
-            );
-
-        }
-    );
-
-
-// ============================================================
-// START DASHBOARD
-// ============================================================
-
-async function startDashboard() {
-
-    await checkHealth();
-
-    await refreshDashboard();
-
-}
-
-
-startDashboard();
