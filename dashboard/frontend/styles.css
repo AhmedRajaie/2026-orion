@@ -115,6 +115,39 @@ button { cursor: pointer; }
   border: none;
 }
 
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+}
+
+.tab-btn {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.92rem;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+  background: linear-gradient(135deg, var(--accent), #7f91ff);
+  color: white;
+}
+
+.tab-page[hidden] { display: none; }
+.tab-page { display: grid; gap: 12px; }
+
 .control-panel {
   padding: 14px;
   margin-bottom: 12px;

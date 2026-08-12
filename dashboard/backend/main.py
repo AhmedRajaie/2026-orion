@@ -1,7 +1,6 @@
 """FastAPI backend for the dashboard. Grows via dashboard/tasks/.
 Run: uv run uvicorn dashboard.backend.main:app --reload --port 8000
 """
-<<<<<<< HEAD
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
@@ -10,8 +9,12 @@ from pydantic import BaseModel, Field
 
 from .strategy_service import (
     list_assets,
+    load_json_artifact,
+    load_reference_notebook_results,
     run_ma_crossover_backtest,
+    run_tiktok_strategy_backtest,
     run_weekly_mean_reversion_backtest,
+    sharpe_from_portfolio_values,
     to_jsonable,
 )
 
@@ -93,6 +96,9 @@ def strategy_performance(
             slow_window=slow_window,
         )
         weekly_result = run_weekly_mean_reversion_backtest(initial_cash=initial_cash)
+        tiktok_result = run_tiktok_strategy_backtest(initial_cash=initial_cash)
+        ma_result["sharpe"] = sharpe_from_portfolio_values(ma_result["portfolio_values"])
+        weekly_result["sharpe"] = sharpe_from_portfolio_values(weekly_result["portfolio_values"])
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"No data found for symbol {symbol}") from exc
     except ValueError as exc:
@@ -103,18 +109,12 @@ def strategy_performance(
     return to_jsonable({
         "ma_crossover": ma_result,
         "weekly_mean_reversion": weekly_result,
+        "tiktok_strategy": tiktok_result,
+        # MLP vs LSTM full-universe portfolio strategy, precomputed by
+        # week2/day3/day3_prediction_to_portfolio.ipynb and saved to dashboard/data/.
+        # None until that notebook has been run at least once.
+        "best_strategy": load_json_artifact("day3_strategy.json"),
+        # The instructor's own already-executed reference notebooks, for a
+        # mine-vs-reference comparison. None if those notebooks are missing.
+        "reference_notebooks": load_reference_notebook_results(),
     })
-=======
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
-app = FastAPI(title="Younit-style trading dashboard")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-# TASK_02+ : add /universe, /prices/{symbol}, /indicators, /backtest here.
->>>>>>> origin/main

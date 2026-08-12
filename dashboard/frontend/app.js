@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 // Dashboard frontend for the EGX Strategy Lab.
 const API = "http://localhost:8000";
 const state = {
@@ -16,13 +15,23 @@ const els = {
   initialCash: document.getElementById("initialCash"),
   fastWindow: document.getElementById("fastWindow"),
   slowWindow: document.getElementById("slowWindow"),
-  strategyPerformancePanel: document.getElementById("strategyPerformancePanel"),
-  strategyPerformanceSummary: document.getElementById("strategyPerformanceSummary"),
-  strategyPerformanceBadges: document.getElementById("strategyPerformanceBadges"),
-  strategyComparisonChartPanel: document.getElementById("strategyComparisonChartPanel"),
-  strategyMetricsChartPanel: document.getElementById("strategyMetricsChartPanel"),
   strategyComparisonChart: document.getElementById("strategyComparisonChart"),
-  strategyMetricsChart: document.getElementById("strategyMetricsChart"),
+  leaderboardEmptyState: document.getElementById("leaderboardEmptyState"),
+  leaderboardContent: document.getElementById("leaderboardContent"),
+  leaderboardTableBody: document.getElementById("leaderboardTableBody"),
+  leaderboardMetricsChart: document.getElementById("leaderboardMetricsChart"),
+  bestTitle: document.getElementById("bestTitle"),
+  bestSummary: document.getElementById("bestSummary"),
+  bestBadges: document.getElementById("bestBadges"),
+  bestChart: document.getElementById("bestChart"),
+  bestDrawdownChart: document.getElementById("bestDrawdownChart"),
+  tiktokChart: document.getElementById("tiktokChart"),
+  referenceEmptyState: document.getElementById("referenceEmptyState"),
+  referenceContent: document.getElementById("referenceContent"),
+  referenceSource: document.getElementById("referenceSource"),
+  referenceSummary: document.getElementById("referenceSummary"),
+  referenceTableBody: document.getElementById("referenceTableBody"),
+  referenceSeedSummary: document.getElementById("referenceSeedSummary"),
   runBtn: document.getElementById("runBtn"),
   resetBtn: document.getElementById("resetBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
@@ -55,16 +64,11 @@ function setTheme(theme) {
 function setLoading(isLoading) {
   els.runBtn.disabled = isLoading;
 }
-=======
-// Dashboard frontend. Grows via dashboard/tasks/.
-const API = "http://localhost:8000";
->>>>>>> origin/main
 
 async function checkHealth() {
   try {
     const r = await fetch(`${API}/health`);
     const j = await r.json();
-<<<<<<< HEAD
     els.backendBadge.textContent = `backend: ${j.status}`;
     els.backendBadge.className = "badge good";
     setBanner("Backend ready. Select an asset and run a backtest.");
@@ -211,11 +215,32 @@ function destroyCharts() {
 }
 
 function destroyStrategyCharts() {
-  ["strategyComparison", "strategyMetrics"].forEach((key) => {
+  ["strategyComparison", "leaderboardMetrics", "best", "bestDrawdown", "tiktok"].forEach((key) => {
     if (state.charts[key]) {
       state.charts[key].destroy();
       delete state.charts[key];
     }
+  });
+}
+
+function initTabs() {
+  const buttons = document.querySelectorAll(".tab-btn");
+  const pages = document.querySelectorAll(".tab-page");
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      buttons.forEach((b) => {
+        b.classList.toggle("active", b === btn);
+        b.setAttribute("aria-selected", b === btn ? "true" : "false");
+      });
+      pages.forEach((page) => {
+        page.hidden = page.dataset.tabPage !== btn.dataset.tab;
+      });
+      // Charts created while their tab was hidden measure a zero-size canvas;
+      // force a re-measure now that the tab is visible.
+      requestAnimationFrame(() => {
+        Object.values(state.charts).forEach((chart) => chart.resize());
+      });
+    });
   });
 }
 
@@ -380,29 +405,20 @@ function renderResults(result) {
 }
 
 function renderStrategyPerformance(performance, baseResult) {
+  destroyStrategyCharts();
+  renderMaVsWeeklyChart(performance);
+  renderLeaderboard(performance);
+  renderBestStrategy(performance.best_strategy);
+  renderTiktokChart(performance.tiktok_strategy);
+  renderReferenceComparison(performance.reference_notebooks, performance.best_strategy);
+}
+
+const muted = () => getComputedStyle(document.documentElement).getPropertyValue("--muted").trim();
+
+function renderMaVsWeeklyChart(performance) {
   const ma = performance.ma_crossover;
   const weekly = performance.weekly_mean_reversion;
   const comparisonLabels = ma.dates.length <= weekly.dates.length ? ma.dates : weekly.dates;
-
-  els.strategyPerformancePanel.hidden = false;
-  els.strategyComparisonChartPanel.hidden = false;
-  els.strategyMetricsChartPanel.hidden = false;
-
-  els.strategyPerformanceSummary.innerHTML = [
-    `MA crossover strategy run on ${ma.symbol} with fast=${ma.fast_window} and slow=${ma.slow_window}.`,
-    `Weekly mean reversion strategy run across the full EGX universe.`,
-    `Selected cash base: ${fmtCurrency(ma.initial_cash)}.`,
-    `MA crossover return: ${fmtPercent(ma.return_percent)} vs weekly return: ${fmtPercent(weekly.return_percent)}.`,
-  ].map((line) => `<div>${line}</div>`).join("");
-
-  els.strategyPerformanceBadges.innerHTML = `
-    <span class="pill">MA return ${fmtPercent(ma.return_percent)}</span>
-    <span class="pill">Weekly return ${fmtPercent(weekly.return_percent)}</span>
-    <span class="pill">MA drawdown ${fmtPercent(ma.max_drawdown_percent)}</span>
-    <span class="pill">Weekly drawdown ${fmtPercent(weekly.max_drawdown_percent)}</span>
-  `;
-
-  destroyStrategyCharts();
 
   state.charts.strategyComparison = new Chart(els.strategyComparisonChart.getContext("2d"), {
     type: "line",
@@ -410,7 +426,7 @@ function renderStrategyPerformance(performance, baseResult) {
       labels: comparisonLabels,
       datasets: [
         {
-          label: "MA Crossover",
+          label: `MA Crossover (${ma.symbol})`,
           data: ma.portfolio_values.slice(0, comparisonLabels.length),
           borderColor: "#6f7dff",
           backgroundColor: "rgba(111,125,255,0.16)",
@@ -433,42 +449,197 @@ function renderStrategyPerformance(performance, baseResult) {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { labels: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
-      },
+      plugins: { legend: { labels: { color: muted() } } },
       scales: {
-        x: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
-        y: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
+        x: { ticks: { color: muted(), maxTicksLimit: 8 } },
+        y: { ticks: { color: muted() } },
       },
     },
   });
+}
 
-  state.charts.strategyMetrics = new Chart(els.strategyMetricsChart.getContext("2d"), {
+function renderLeaderboard(performance) {
+  const ma = performance.ma_crossover;
+  const weekly = performance.weekly_mean_reversion;
+  const tiktok = performance.tiktok_strategy;
+  const best = performance.best_strategy;
+
+  els.leaderboardEmptyState.hidden = true;
+  els.leaderboardContent.hidden = false;
+
+  const rows = [
+    { name: `MA Crossover (${ma.symbol})`, final: ma.final_value, ret: ma.return_percent, dd: ma.max_drawdown_percent, sharpe: ma.sharpe },
+    { name: "Weekly Mean Reversion", final: weekly.final_value, ret: weekly.return_percent, dd: weekly.max_drawdown_percent, sharpe: weekly.sharpe },
+    { name: "TikTok Guru Strategy", final: tiktok.final_value, ret: tiktok.return_percent, dd: tiktok.max_drawdown_percent, sharpe: tiktok.sharpe },
+  ];
+
+  if (best) {
+    (best.comparison_table || []).forEach((row) => {
+      const label = row.Strategy === "Benchmark (equal-weight)" ? "Benchmark (full universe)" : `${row.Strategy} (baseline)`;
+      rows.push({ name: label, final: row["Final Value"], ret: row["Return %"], dd: row["Max Drawdown %"], sharpe: row.Sharpe });
+    });
+    const m = best.best_strategy_metrics;
+    rows.push({ name: `${best.name} (tuned)`, final: m.final_value, ret: m.return_pct, dd: m.max_drawdown_pct, sharpe: m.sharpe });
+  }
+
+  els.leaderboardTableBody.innerHTML = rows
+    .map((r) => `<tr><td>${r.name}</td><td>${fmtCurrency(r.final)}</td><td>${fmtPercent(r.ret)}</td><td>${fmtPercent(r.dd)}</td><td>${Number(r.sharpe || 0).toFixed(2)}</td></tr>`)
+    .join("");
+
+  state.charts.leaderboardMetrics = new Chart(els.leaderboardMetricsChart.getContext("2d"), {
     type: "bar",
     data: {
-      labels: ["Return %", "Max Drawdown %", "Trades"],
+      labels: rows.map((r) => r.name),
       datasets: [
-        {
-          label: "MA Crossover",
-          data: [ma.return_percent, ma.max_drawdown_percent, ma.total_operations],
-          backgroundColor: "rgba(111,125,255,0.7)",
-        },
-        {
-          label: "Weekly Mean Reversion",
-          data: [weekly.return_percent, weekly.max_drawdown_percent, weekly.trade_count],
-          backgroundColor: "rgba(53,215,168,0.7)",
-        },
+        { label: "Return %", data: rows.map((r) => r.ret), backgroundColor: "rgba(111,125,255,0.75)" },
+        { label: "Max Drawdown %", data: rows.map((r) => r.dd), backgroundColor: "rgba(255,100,116,0.7)" },
+        { label: "Sharpe", data: rows.map((r) => r.sharpe), backgroundColor: "rgba(53,215,168,0.75)" },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: muted() } } },
       scales: {
-        x: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
-        y: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
+        x: { ticks: { color: muted(), maxRotation: 30, minRotation: 30 } },
+        y: { ticks: { color: muted() } },
       },
     },
   });
+}
+
+function renderBestStrategy(best) {
+  if (!best) return;
+  const m = best.best_strategy_metrics;
+  const seeds = best.seed_stability;
+
+  els.bestTitle.textContent = best.name;
+
+  els.bestSummary.innerHTML = [
+    `Model: ${best.model_type} · Weighting: ${best.weighting_method}`,
+    `Universe: ${best.universe.length} EGX stocks · Initial capital: ${fmtCurrency(m.initial_value)}`,
+    `Final value: ${fmtCurrency(m.final_value)} · P/L: ${fmtCurrency(m.pnl)} · Return: ${fmtPercent(m.return_pct)}`,
+    `Max drawdown: ${fmtCurrency(m.max_drawdown_egp)} (${fmtPercent(m.max_drawdown_pct)}) · Sharpe: ${m.sharpe.toFixed(2)} · Rebalances: ${m.n_rebalances}`,
+    `Seed stability (seeds ${seeds.seeds.join(", ")}): mean ${fmtPercent(seeds.mean_return_pct)}, std ${seeds.std_return_pct.toFixed(2)} pts, profitable in ${Math.round(seeds.profitable_seed_fraction * 100)}% of seeds — ${seeds.verdict}`,
+  ].map((line) => `<div>${line}</div>`).join("");
+
+  els.bestBadges.innerHTML = `
+    <span class="pill">Return ${fmtPercent(m.return_pct)}</span>
+    <span class="pill">Drawdown ${fmtPercent(m.max_drawdown_pct)}</span>
+    <span class="pill">Sharpe ${m.sharpe.toFixed(2)}</span>
+    <span class="pill">${best.model_type}</span>
+  `;
+
+  state.charts.best = new Chart(els.bestChart.getContext("2d"), {
+    type: "line",
+    data: {
+      labels: best.dates,
+      datasets: [
+        { label: "Benchmark", data: best.benchmark_curve, borderColor: "#84a0c0", borderDash: [5, 4], borderWidth: 1.6, pointRadius: 0, tension: 0.25 },
+        { label: "MLP Portfolio", data: best.mlp_curve, borderColor: "#6f7dff", borderWidth: 1.8, pointRadius: 0, tension: 0.25 },
+        { label: "LSTM Portfolio", data: best.lstm_curve, borderColor: "#35d7a8", borderWidth: 1.8, pointRadius: 0, tension: 0.25 },
+        { label: `${best.name} (best)`, data: best.best_curve, borderColor: "#ffc36b", borderWidth: 2.4, pointRadius: 0, tension: 0.25 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { color: muted() } } },
+      scales: {
+        x: { ticks: { color: muted(), maxTicksLimit: 8 } },
+        y: { ticks: { color: muted() } },
+      },
+    },
+  });
+
+  state.charts.bestDrawdown = new Chart(els.bestDrawdownChart.getContext("2d"), {
+    type: "line",
+    data: {
+      labels: best.dates,
+      datasets: [
+        { label: "Benchmark", data: best.benchmark_drawdown_pct, borderColor: "#84a0c0", borderDash: [5, 4], borderWidth: 1.4, pointRadius: 0, fill: false, tension: 0.2 },
+        { label: "MLP Portfolio", data: best.mlp_drawdown_pct, borderColor: "#6f7dff", borderWidth: 1.6, pointRadius: 0, fill: false, tension: 0.2 },
+        { label: "LSTM Portfolio", data: best.lstm_drawdown_pct, borderColor: "#35d7a8", borderWidth: 1.6, pointRadius: 0, fill: false, tension: 0.2 },
+        { label: `${best.name} (best)`, data: best.best_drawdown_pct, borderColor: "#ffc36b", borderWidth: 2, pointRadius: 0, fill: false, tension: 0.2 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { color: muted() } } },
+      scales: {
+        x: { ticks: { color: muted(), maxTicksLimit: 8 } },
+        y: { reverse: true, ticks: { color: muted() } },
+      },
+    },
+  });
+}
+
+function renderTiktokChart(tiktok) {
+  if (!tiktok) return;
+  state.charts.tiktok = new Chart(els.tiktokChart.getContext("2d"), {
+    type: "line",
+    data: {
+      labels: tiktok.dates,
+      datasets: [
+        { label: "TikTok Guru Strategy", data: tiktok.portfolio_values, borderColor: "#ffc36b", borderWidth: 2, pointRadius: 0, tension: 0.25 },
+        { label: "Equal-Weight Benchmark", data: tiktok.benchmark_values, borderColor: "#84a0c0", borderDash: [5, 4], borderWidth: 1.6, pointRadius: 0, tension: 0.25 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { color: muted() } } },
+      scales: {
+        x: { ticks: { color: muted(), maxTicksLimit: 8 } },
+        y: { ticks: { color: muted() } },
+      },
+    },
+  });
+}
+
+function renderReferenceComparison(reference, best) {
+  if (!reference) {
+    els.referenceEmptyState.hidden = false;
+    els.referenceContent.hidden = true;
+    return;
+  }
+  els.referenceEmptyState.hidden = true;
+  els.referenceContent.hidden = false;
+  els.referenceSource.textContent = `Source: ${reference.source}`;
+
+  const mineMlp = best?.comparison_table?.find((r) => r.Strategy === "MLP Portfolio");
+  const mineLstm = best?.comparison_table?.find((r) => r.Strategy === "LSTM Portfolio");
+  const refMlp = reference.mlp;
+  const refLstm = reference.lstm;
+
+  els.referenceSummary.innerHTML = [
+    `My MLP and LSTM train on the full 34-stock EGX universe with proportional full-universe weights; the reference notebooks train a single stock with a top-k equal-weight strategy — different setups, so treat this as "does the same idea hold up elsewhere", not an apples-to-apples score.`,
+    refMlp ? `Reference MLP: ${fmtPercent(refMlp.return_percent)} return, ${fmtPercent(refMlp.max_drawdown_percent)} drawdown, Sharpe ${refMlp.sharpe.toFixed(2)}.` : "",
+    refLstm ? `Reference LSTM: ${fmtPercent(refLstm.return_percent)} return, ${fmtPercent(refLstm.max_drawdown_percent)} drawdown, Sharpe ${refLstm.sharpe.toFixed(2)}.` : "",
+  ].filter(Boolean).map((line) => `<div>${line}</div>`).join("");
+
+  const tableRows = [];
+  if (mineMlp) tableRows.push({ model: "MLP", source: "Mine (full universe)", final: mineMlp["Final Value"], ret: mineMlp["Return %"], dd: mineMlp["Max Drawdown %"], sharpe: mineMlp.Sharpe });
+  if (refMlp) tableRows.push({ model: "MLP", source: "Reference notebook", final: refMlp.final_value, ret: refMlp.return_percent, dd: refMlp.max_drawdown_percent, sharpe: refMlp.sharpe });
+  if (mineLstm) tableRows.push({ model: "LSTM", source: "Mine (full universe)", final: mineLstm["Final Value"], ret: mineLstm["Return %"], dd: mineLstm["Max Drawdown %"], sharpe: mineLstm.Sharpe });
+  if (refLstm) tableRows.push({ model: "LSTM", source: "Reference notebook", final: refLstm.final_value, ret: refLstm.return_percent, dd: refLstm.max_drawdown_percent, sharpe: refLstm.sharpe });
+
+  els.referenceTableBody.innerHTML = tableRows
+    .map((r) => `<tr><td>${r.model}</td><td>${r.source}</td><td>${fmtCurrency(r.final)}</td><td>${fmtPercent(r.ret)}</td><td>${fmtPercent(r.dd)}</td><td>${Number(r.sharpe || 0).toFixed(2)}</td></tr>`)
+    .join("");
+
+  const pivotSeeds = reference.pivot_seed_table || [];
+  const pivotWinRate = pivotSeeds.length ? pivotSeeds.filter((s) => s.beat_benchmark).length / pivotSeeds.length : null;
+  const mySeeds = best?.seed_stability;
+
+  els.referenceSeedSummary.innerHTML = [
+    mySeeds ? `Mine: ${mySeeds.seeds.length} seeds (${mySeeds.seeds.join(", ")}), profitable in ${Math.round(mySeeds.profitable_seed_fraction * 100)}% of seeds, mean return ${fmtPercent(mySeeds.mean_return_pct)}, std ${mySeeds.std_return_pct.toFixed(2)} pts.` : "",
+    pivotWinRate !== null ? `Reference (pivot.ipynb): ${pivotSeeds.length} seeds, beat the benchmark in ${Math.round(pivotWinRate * 100)}% of seeds — the reference notebook's own point is that this is close to a coin flip for a top-k single-stock strategy.` : "",
+  ].filter(Boolean).map((line) => `<div>${line}</div>`).join("");
 }
 
 function resetForm() {
@@ -483,9 +654,10 @@ function resetForm() {
   state.strategyPerformance = null;
   els.resultsSection.hidden = true;
   els.emptyState.hidden = false;
-  els.strategyPerformancePanel.hidden = true;
-  els.strategyComparisonChartPanel.hidden = true;
-  els.strategyMetricsChartPanel.hidden = true;
+  els.leaderboardEmptyState.hidden = false;
+  els.leaderboardContent.hidden = true;
+  els.referenceEmptyState.hidden = false;
+  els.referenceContent.hidden = true;
   els.kpiRow.innerHTML = "";
   destroyCharts();
 }
@@ -531,19 +703,15 @@ function bindEvents() {
 async function init() {
   setTheme("dark");
   bindEvents();
+  initTabs();
   await checkHealth();
   await loadAssets();
   setLoading(false);
   resetForm();
+  if (state.assets.length) {
+    els.assetSelect.value = state.assets[0];
+    await runBacktest();   // pre-load the Leaderboard / Reference tabs so they aren't empty
+  }
 }
 
 init();
-=======
-    document.getElementById("status").textContent = "backend: " + j.status;
-  } catch (e) {
-    document.getElementById("status").textContent = "backend not reachable — start uvicorn";
-  }
-}
-checkHealth();
-// TASK_02+ : fetch /prices and render a chart, etc.
->>>>>>> origin/main

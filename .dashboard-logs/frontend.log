@@ -1,18 +1,12 @@
-Traceback (most recent call last):
-  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py", line 197, in _run_module_as_main
-    return _run_code(code, main_globals, None,
-  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py", line 87, in _run_code
-    exec(code, run_globals)
-  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 1297, in <module>
-    test(
-  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 1252, in test
-    with ServerClass(addr, HandlerClass) as httpd:
-  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 452, in __init__
-    self.server_bind()
-  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 1295, in server_bind
-    return super().server_bind()
-  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/http/server.py", line 138, in server_bind
-    socketserver.TCPServer.server_bind(self)
-  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 466, in server_bind
-    self.socket.bind(self.server_address)
-OSError: [Errno 48] Address already in use
+::1 - - [11/Aug/2026 10:39:06] "GET /index.html HTTP/1.1" 200 -
+::1 - - [11/Aug/2026 10:39:06] "GET /app.js HTTP/1.1" 200 -
+::1 - - [11/Aug/2026 10:41:57] "GET / HTTP/1.1" 200 -
+::1 - - [11/Aug/2026 10:41:57] "GET /app.js HTTP/1.1" 200 -
+::1 - - [11/Aug/2026 10:41:57] "GET /styles.css HTTP/1.1" 304 -
+::1 - - [11/Aug/2026 10:41:57] code 404, message File not found
+::1 - - [11/Aug/2026 10:41:57] "GET /favicon.ico HTTP/1.1" 404 -
+::1 - - [11/Aug/2026 11:01:14] "GET /index.html HTTP/1.1" 200 -
+::1 - - [11/Aug/2026 11:01:14] "GET /app.js HTTP/1.1" 200 -
+::1 - - [11/Aug/2026 11:01:14] "GET /styles.css HTTP/1.1" 200 -
+::1 - - [11/Aug/2026 11:03:08] "GET / HTTP/1.1" 200 -
+::1 - - [11/Aug/2026 11:03:08] "GET /app.js HTTP/1.1" 200 -

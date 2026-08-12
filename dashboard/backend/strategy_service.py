@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,10 +14,157 @@ import pandas as pd
 from src.tradinglab.data_feed import DataFeed
 from src.tradinglab import metrics
 from src.tradinglab.indicators import sma
+from src.tradinglab.backtester import run_backtest
+from src.tradinglab.simulator import PortfolioSimulator
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT_DIR / "data" / "egx"
+DASHBOARD_DATA_DIR = ROOT_DIR / "dashboard" / "data"
+TIKTOK_SCRIPT = ROOT_DIR / "week1" / "06-tiktok-strategy" / "tiktok_strategy.py"
+REFERENCE_NOTEBOOK_DIR = ROOT_DIR / "week2" / "03-form-prediction-to-portfolio"
+
+
+def load_json_artifact(filename: str) -> dict[str, Any] | None:
+    """Load a pre-computed JSON artifact a notebook saved under dashboard/data/
+    (e.g. the best-strategy export). Returns None rather than raising so the
+    dashboard still works before that notebook has been run."""
+    path = DASHBOARD_DATA_DIR / filename
+    if not path.exists():
+        return None
+    with open(path) as f:
+        return json.load(f)
+
+
+def sharpe_from_portfolio_values(values: list[float] | np.ndarray) -> float:
+    """Sharpe ratio of a daily portfolio-value curve, reusing tradinglab.metrics.sharpe
+    (ma_crossover / weekly_mean_reversion track EGP value, not returns directly)."""
+    values = np.asarray(values, dtype=float)
+    if len(values) < 2:
+        return 0.0
+    daily_returns = values[1:] / values[:-1] - 1.0
+    return float(metrics.sharpe(daily_returns))
+
+
+def _load_tiktok_module():
+    """Load week1/06-tiktok-strategy/tiktok_strategy.py as a module by path --
+    it's a standalone script (not part of the tradinglab package), so we import
+    it directly rather than duplicating its strategy logic here."""
+    spec = importlib.util.spec_from_file_location("tiktok_strategy", TIKTOK_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def run_tiktok_strategy_backtest(
+    initial_cash: float = 1000.0, data_dir: str | Path | None = None
+) -> dict[str, Any]:
+    """Run week1's TikTok Guru strategy through the project's standard
+    walk-forward backtester (full EGX universe), reusing the existing
+    make_tiktok_guru_strategy implementation rather than rewriting it."""
+    tiktok = _load_tiktok_module()
+    feed = DataFeed.from_dir(data_dir or DATA_DIR)
+    sim = PortfolioSimulator(feed, benchmark="equal_weight", commission=tiktok.COMMISSION)
+    result = run_backtest(sim, tiktok.make_tiktok_guru_strategy(week_days=5), lookback=30)
+
+    port = result["portfolio"] * initial_cash
+    bench = result["benchmark"] * initial_cash
+    r = result["portfolio_returns"]
+    peak = np.maximum.accumulate(port)
+    dd_pct = np.divide(peak - port, peak, out=np.zeros_like(port), where=peak > 0)
+
+    return {
+        "label": "TikTok Guru Strategy",
+        "initial_cash": float(initial_cash),
+        "final_value": float(port[-1]),
+        "benchmark_final_value": float(bench[-1]),
+        "profit_loss": float(port[-1] - initial_cash),
+        "return_percent": float(100 * (port[-1] / initial_cash - 1)),
+        "max_drawdown_percent": float(dd_pct.max() * 100),
+        "sharpe": float(metrics.sharpe(r)),
+        "dates": [d.strftime("%Y-%m-%d") for d in result["dates"]],
+        "portfolio_values": port.tolist(),
+        "benchmark_values": bench.tolist(),
+    }
+
+
+def _notebook_stream_text(nb_path: Path) -> str:
+    """Concatenate every stdout stream a notebook already printed when it was
+    last executed. We read the ALREADY-COMPUTED outputs rather than re-running
+    someone else's notebook."""
+    with open(nb_path) as f:
+        nb = json.load(f)
+    chunks: list[str] = []
+    for cell in nb.get("cells", []):
+        if cell.get("cell_type") != "code":
+            continue
+        for out in cell.get("outputs", []):
+            if out.get("output_type") == "stream":
+                chunks.append("".join(out.get("text", [])))
+    return "\n".join(chunks)
+
+
+def _parse_report_block(text: str) -> dict[str, float] | None:
+    """Parse the standard tradinglab.report.report() print block:
+    'total return : +X% / sharpe : X / max drawdown : X% / final value : X (benchmark X)'.
+    Returns None if that block isn't present in the given text."""
+    ret = re.search(r"total return\s*:\s*([+-]?[\d.]+)%", text)
+    sharpe = re.search(r"sharpe\s*:\s*([+-]?[\d.]+)", text)
+    dd = re.search(r"max drawdown\s*:\s*([\d.]+)%", text)
+    final = re.search(r"final value\s*:\s*([\d,.]+)\s*\(benchmark\s*([\d,.]+)\)", text)
+    if not (ret and sharpe and dd and final):
+        return None
+    return {
+        "return_percent": float(ret.group(1)),
+        "sharpe": float(sharpe.group(1)),
+        "max_drawdown_percent": float(dd.group(1)),
+        "final_value": float(final.group(1).replace(",", "")),
+        "benchmark_value": float(final.group(2).replace(",", "")),
+    }
+
+
+def load_reference_notebook_results() -> dict[str, Any] | None:
+    """Read the real, already-executed results out of the reference notebooks in
+    week2/03-form-prediction-to-portfolio/ (mlp.ipynb, lstm.ipynb, pivot.ipynb).
+    These already contain printed output from a real run -- we parse that
+    existing text rather than hardcoding numbers or re-running someone else's
+    notebook. Returns None if the notebooks aren't present."""
+    if not REFERENCE_NOTEBOOK_DIR.exists():
+        return None
+
+    mlp_path = REFERENCE_NOTEBOOK_DIR / "mlp.ipynb"
+    lstm_path = REFERENCE_NOTEBOOK_DIR / "lstm.ipynb"
+    pivot_path = REFERENCE_NOTEBOOK_DIR / "pivot.ipynb"
+    if not (mlp_path.exists() and lstm_path.exists() and pivot_path.exists()):
+        return None
+
+    mlp_text = _notebook_stream_text(mlp_path)
+    lstm_text = _notebook_stream_text(lstm_path)
+    pivot_text = _notebook_stream_text(pivot_path)
+
+    seed_rows = []
+    for m in re.finditer(
+        r"^\s*(\d+)\s+([+-][\d.]+)\s+([\d,]+)\s+([\d,]+)\s+(YES|no)",
+        pivot_text,
+        re.MULTILINE,
+    ):
+        seed_rows.append(
+            {
+                "seed": int(m.group(1)),
+                "ic": float(m.group(2)),
+                "strategy_value": float(m.group(3).replace(",", "")),
+                "benchmark_value": float(m.group(4).replace(",", "")),
+                "beat_benchmark": m.group(5) == "YES",
+            }
+        )
+
+    return {
+        "source": "week2/03-form-prediction-to-portfolio (mlp.ipynb, lstm.ipynb, pivot.ipynb)",
+        "mlp": _parse_report_block(mlp_text),
+        "lstm": _parse_report_block(lstm_text),
+        "pivot_single_run": _parse_report_block(pivot_text),
+        "pivot_seed_table": seed_rows,
+    }
 
 
 def list_assets(data_dir: str | Path | None = None) -> list[str]:
