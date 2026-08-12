@@ -1,12 +1,9 @@
 <!doctype html>
 <html>
-
 <head>
   <meta charset="utf-8" />
-  <title>Trading Dashboard</title>
-
+  <title>Trading Intelligence Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
   <style>
     body {
       font-family: system-ui, sans-serif;
@@ -14,122 +11,196 @@
       background: #0b1220;
       color: #e6edf3;
     }
-
     .panel {
       background: #111a2b;
       border-radius: 10px;
       padding: 16px;
       margin-bottom: 20px;
     }
-
-    h1 {
-      font-weight: 600;
+    h1 { font-weight: 600; }
+    canvas { width: 100%; height: 420px; }
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
     }
-
-    canvas {
-      width: 100%;
-      height: 420px;
+    select, button {
+      background: #0f172a;
+      color: #e6edf3;
+      border: 1px solid #22324c;
+      border-radius: 8px;
+      padding: 10px 12px;
     }
+    button { cursor: pointer; background: #3b82f6; border: none; }
+    button:hover { background: #2563eb; }
+    .status-ok { color: #4ade80; }
+    .status-error { color: #f87171; }
 
     .kpis {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
       gap: 12px;
       margin-top: 16px;
-      margin-bottom: 20px;
     }
-
     .kpi {
       background: #0f172a;
       border: 1px solid #22324c;
       border-radius: 8px;
       padding: 14px;
-      transition: 0.2s;
     }
-
-    .kpi:hover {
-      border-color: #3b82f6;
-    }
-
     .kpi-title {
       font-size: 12px;
       color: #94a3b8;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: .5px;
     }
-
     .kpi-value {
       font-size: 22px;
       font-weight: 700;
       margin-top: 8px;
     }
-  </style>
 
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #22324c;
+      text-align: left;
+      white-space: nowrap;
+    }
+    th { color: #94a3b8; font-size: 12px; text-transform: uppercase; }
+    tr:hover { background: #0f172a; }
+    .positive { color: #4ade80; }
+    .negative { color: #f87171; }
+
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .stock-card, .strategy-card {
+      background: #0f172a;
+      border: 1px solid #22324c;
+      border-radius: 10px;
+      padding: 14px;
+    }
+    .stock-card h3, .strategy-card strong {
+      margin-top: 0;
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      background: #0f172a;
+      color: #e6edf3;
+      border: 1px solid #22324c;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+      resize: vertical;
+    }
+    .chat-response {
+      margin-top: 12px;
+      min-height: 80px;
+      border: 1px solid #22324c;
+      border-radius: 8px;
+      padding: 14px;
+      background: #0f172a;
+      white-space: pre-wrap;
+    }
+    .muted { color: #94a3b8; }
+    .error-box {
+      color: #fecaca;
+      background: #450a0a;
+      border: 1px solid #7f1d1d;
+      padding: 12px;
+      border-radius: 8px;
+      margin-top: 10px;
+    }
+  </style>
 </head>
 
 <body>
+  <h1>Trading Intelligence Dashboard</h1>
 
-  <h1>Trading Dashboard</h1>
+  <div class="panel" id="status">Connecting...</div>
 
-  <div class="panel" id="status">
-    connecting...
+  <div class="panel">
+    <div class="controls">
+      <label for="symbolSelect"><strong>Symbol:</strong></label>
+      <select id="symbolSelect"></select>
+      <button id="refreshButton">Refresh</button>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-title">Latest Close</div><div class="kpi-value" id="kpiLatest"></div></div>
+      <div class="kpi"><div class="kpi-title">Daily Change</div><div class="kpi-value" id="kpiDaily"></div></div>
+      <div class="kpi"><div class="kpi-title">Total Return</div><div class="kpi-value" id="kpiReturn"></div></div>
+      <div class="kpi"><div class="kpi-title">Max Drawdown</div><div class="kpi-value" id="kpiDrawdown"></div></div>
+      <div class="kpi"><div class="kpi-title">SMA (9)</div><div class="kpi-value" id="kpiSma9"></div></div>
+      <div class="kpi"><div class="kpi-title">SMA (20)</div><div class="kpi-value" id="kpiSma20"></div></div>
+      <div class="kpi"><div class="kpi-title">Trend</div><div class="kpi-value" id="kpiTrend"></div></div>
+      <div class="kpi"><div class="kpi-title">Signal</div><div class="kpi-value" id="kpiSignal"></div></div>
+    </div>
   </div>
 
   <div class="panel">
-
-    <label for="symbolSelect"><strong>Symbol:</strong></label>
-    <select id="symbolSelect"></select>
-
-    <div class="kpis">
-
-      <div class="kpi">
-        <div class="kpi-title">Latest Close</div>
-        <div class="kpi-value" id="kpiLatest"></div>
-      </div>
-
-      <div class="kpi">
-        <div class="kpi-title">Daily Change</div>
-        <div class="kpi-value" id="kpiDaily"></div>
-      </div>
-
-      <div class="kpi">
-        <div class="kpi-title">Total Return</div>
-        <div class="kpi-value" id="kpiReturn"></div>
-      </div>
-
-      <div class="kpi">
-        <div class="kpi-title">Max Drawdown</div>
-        <div class="kpi-value" id="kpiDrawdown"></div>
-      </div>
-
-      <div class="kpi">
-        <div class="kpi-title">SMA (9)</div>
-        <div class="kpi-value" id="kpiSma9"></div>
-      </div>
-
-      <div class="kpi">
-        <div class="kpi-title">SMA (20)</div>
-        <div class="kpi-value" id="kpiSma20"></div>
-      </div>
-
-      <div class="kpi">
-        <div class="kpi-title">Trend</div>
-        <div class="kpi-value" id="kpiTrend"></div>
-      </div>
-
-      <div class="kpi">
-        <div class="kpi-title">Signal</div>
-        <div class="kpi-value" id="kpiSignal"></div>
-      </div>
-
+    <h2>Market Intelligence</h2>
+    <p class="muted">Rank all stocks using return, risk, momentum and trend.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th><th>Symbol</th><th>Return</th><th>Drawdown</th>
+            <th>Daily</th><th>Trend</th><th>Signal</th><th>Score</th>
+          </tr>
+        </thead>
+        <tbody id="marketTableBody"></tbody>
+      </table>
     </div>
+  </div>
 
+  <div class="panel">
+    <h2>Stock Comparison</h2>
+    <div class="controls">
+      <label for="compareSelect"><strong>Select stocks:</strong></label>
+      <select id="compareSelect" multiple size="5"></select>
+      <button id="compareButton">Compare</button>
+    </div>
+    <div id="comparisonCards" class="comparison-grid"></div>
+    <canvas id="comparisonChart"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>Strategy Comparison</h2>
+    <div class="controls">
+      <label for="strategySymbolSelect"><strong>Compare for symbol:</strong></label>
+      <select id="strategySymbolSelect"></select>
+    </div>
+    <div id="strategySummary" class="comparison-grid"></div>
+    <canvas id="strategyChart"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>Price & Indicators</h2>
     <canvas id="priceChart"></canvas>
+  </div>
 
+  <div class="panel">
+    <h2>Ask the Dashboard</h2>
+    <p class="muted">Ask about the selected stock, market ranking, or strategy performance.</p>
+    <textarea id="chatInput" rows="3" placeholder="Example: Which strategy performed best?"></textarea>
+    <button id="chatSendButton">Ask</button>
+    <div class="chat-response" id="chatResponse">Type a question and press Ask.</div>
   </div>
 
   <script src="app.js"></script>
-
 </body>
-
 </html>
