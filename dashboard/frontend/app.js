@@ -7,8 +7,10 @@ let strategyChart = null;
 let egx30Chart = null;
 let drawdownChart = null;
 let smaChart = null;
+let modelComparisonChart = null;
 let buySignals = [];
 let sellSignals = [];
+let modelComparisonData = null;
 
 // =========================
 // Health Check
@@ -130,8 +132,73 @@ async function loadPrice(symbol) {
 
     await loadBacktest(symbol);
 
+    await loadModelComparison(symbol);
+
     drawChart(symbol, priceData, indicatorData);
 
+}
+
+async function loadModelComparison(symbol) {
+    const errorBox = document.getElementById("modelComparisonError");
+    errorBox.textContent = "";
+
+    try {
+        const response = await fetch(`${API}/model-comparison/${encodeURIComponent(symbol)}`);
+        const data = await response.json();
+        if (!response.ok || data.error) {
+            errorBox.textContent = data.error || "Could not load model comparison.";
+            return;
+        }
+
+        modelComparisonData = data;
+        document.getElementById("modelComparisonTitle").textContent =
+            `${symbol} — model comparison from 2022`;
+        drawModelComparisonChart();
+    } catch {
+        errorBox.textContent = "Could not load model comparison.";
+    }
+}
+
+function drawModelComparisonChart() {
+    if (!modelComparisonData) return;
+
+    const ctx = document.getElementById("modelComparisonChart").getContext("2d");
+    if (modelComparisonChart) modelComparisonChart.destroy();
+
+    const colors = {
+        stock: "#facc15",
+        sma: "#a78bfa",
+        lstm: "#f97316",
+        mlp: "#38bdf8",
+        benchmark: "#f8fafc"
+    };
+    const labels = {
+        stock: "Stock buy & hold",
+        sma: "SMA 9/20",
+        lstm: "LSTM",
+        mlp: "MLP",
+        benchmark: "Benchmark"
+    };
+
+    const enabled = Array.from(document.querySelectorAll("input[name='modelCurve']:checked"))
+        .map(input => input.value);
+
+    modelComparisonChart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: modelComparisonData.dates,
+            datasets: enabled.map(key => ({
+                label: labels[key],
+                data: modelComparisonData[key],
+                borderColor: colors[key],
+                borderDash: key === "benchmark" ? [7, 5] : [],
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: .2
+            }))
+        },
+        options: chartOptions()
+    });
 }
 
 // =========================
@@ -654,5 +721,9 @@ function drawDrawdownChart(data) {
 // =========================
 
 checkHealth();
+
+document.querySelectorAll("input[name='modelCurve']").forEach(input => {
+    input.addEventListener("change", drawModelComparisonChart);
+});
 
 loadUniverse();

@@ -99,6 +99,25 @@
             box-shadow: 0 10px 25px rgba(0,0,0,.35);
         }
 
+        .model-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin: 16px 0;
+            color: #cbd5e1;
+        }
+
+        .model-controls label {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            cursor: pointer;
+        }
+
+        .model-controls input {
+            accent-color: #38bdf8;
+        }
+
         .multi-select-panel h2 {
             margin-bottom: 8px;
         }
@@ -261,6 +280,19 @@
 
         </div>
 
+    </div>
+
+    <div class="chart-panel model-comparison-panel">
+        <h2 id="modelComparisonTitle">Selected stock — model comparison from 2022</h2>
+        <div class="model-controls" role="group" aria-label="Model curves">
+            <label><input type="checkbox" name="modelCurve" value="stock" checked> Stock</label>
+            <label><input type="checkbox" name="modelCurve" value="sma" checked> SMA</label>
+            <label><input type="checkbox" name="modelCurve" value="lstm" checked> LSTM</label>
+            <label><input type="checkbox" name="modelCurve" value="mlp" checked> MLP</label>
+            <label><input type="checkbox" name="modelCurve" value="benchmark" checked> Benchmark</label>
+        </div>
+        <div id="modelComparisonError" class="dashboard-error" role="alert"></div>
+        <canvas id="modelComparisonChart"></canvas>
     </div>
 
     <section class="multi-select-panel">

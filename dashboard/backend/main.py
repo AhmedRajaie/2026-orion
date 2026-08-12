@@ -9,6 +9,8 @@ import pandas as pd
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+import torch
+import torch.nn as nn
 
 app = FastAPI(title="EGX Trading Dashboard")
 
@@ -20,11 +22,101 @@ app.add_middleware(
 )
 
 DATA_DIR = Path(__file__).parents[2] / "data" / "egx"
+MODEL_START_DATE = pd.Timestamp("2022-01-01")
+
+
+class DashboardLSTM(nn.Module):
+    def __init__(self, hidden_size=32):
+        super().__init__()
+        self.lstm = nn.LSTM(1, hidden_size, batch_first=True)
+        self.head = nn.Linear(hidden_size, 1)
+
+    def forward(self, values):
+        output, _ = self.lstm(values)
+        return self.head(output[:, -1, :]).squeeze(-1)
+
+
+def model_equity(symbol: str):
+    """Return the notebook-style model curves for one stock from 2022."""
+    from sklearn.neural_network import MLPRegressor
+    from sklearn.preprocessing import StandardScaler
+
+    frame = pd.read_csv(DATA_DIR / f"{symbol}.csv", parse_dates=["date"])
+    frame = frame.sort_values("date").set_index("date")
+    close = frame["close"].astype(float)
+    returns = close.pct_change()
+    data = pd.DataFrame({f"lag_{lag}": returns.shift(lag) for lag in range(1, 6)})
+    data["target"] = returns
+    data = data.dropna()
+
+    dates = data.index[data.index >= MODEL_START_DATE]
+    if len(dates) < 30:
+        return {"error": "Not enough data from 2022 for this stock"}
+
+    split = data.index.searchsorted(MODEL_START_DATE)
+    train = data.iloc[:split]
+    display_data = data.loc[dates]
+    scaler = StandardScaler().fit(train.iloc[:, :5])
+    X_train = scaler.transform(train.iloc[:, :5]).astype("float32")
+    y_train = train["target"].to_numpy(dtype="float32")
+    X_display = scaler.transform(display_data.iloc[:, :5]).astype("float32")
+
+    mlp = MLPRegressor(
+        hidden_layer_sizes=(32,), random_state=42, shuffle=False,
+        max_iter=150, early_stopping=False
+    )
+    mlp.fit(X_train, y_train)
+    mlp_predictions = mlp.predict(X_display)
+
+    torch.manual_seed(42)
+    lstm = DashboardLSTM(hidden_size=32)
+    optimizer = torch.optim.Adam(lstm.parameters(), lr=0.001)
+    loss_fn = nn.MSELoss()
+    X_train_seq = torch.tensor(X_train.reshape(-1, 5, 1))
+    y_train_tensor = torch.tensor(y_train)
+    for _ in range(100):
+        optimizer.zero_grad()
+        loss = loss_fn(lstm(X_train_seq), y_train_tensor)
+        loss.backward()
+        optimizer.step()
+
+    with torch.no_grad():
+        lstm_predictions = lstm(torch.tensor(X_display.reshape(-1, 5, 1))).numpy()
+
+    actual_returns = display_data["target"].to_numpy(dtype=float)
+    sma_fast = close.rolling(9).mean()
+    sma_slow = close.rolling(20).mean()
+    sma_returns = actual_returns * (
+        sma_fast.loc[dates].to_numpy() > sma_slow.loc[dates].to_numpy()
+    )
+
+    def curve(values):
+        return (1000 * np.cumprod(1 + np.nan_to_num(values))).round(2).tolist()
+
+    stock_returns = display_data["target"].to_numpy(dtype=float)
+
+    return {
+        "dates": [date.strftime("%Y-%m-%d") for date in dates],
+        "sma": curve(sma_returns),
+        "lstm": curve(np.where(lstm_predictions > 0, actual_returns, 0)),
+        "mlp": curve(np.where(mlp_predictions > 0, actual_returns, 0)),
+        "benchmark": curve(actual_returns),
+        "stock": curve(stock_returns),
+    }
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/model-comparison/{symbol}")
+def model_comparison(symbol: str):
+    symbol = symbol.upper()
+    file = DATA_DIR / f"{symbol}.csv"
+    if not file.exists():
+        return {"error": "Unknown Symbol"}
+    return model_equity(symbol)
 
 
 @app.get("/universe")
