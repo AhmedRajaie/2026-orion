@@ -20,6 +20,7 @@ let drawdownChartInstance = null;
 let equityChartInstance = null;
 let baseStrategyChartInstance = null;
 let newStrategyChartInstance = null;
+let day3ComparisonChartInstance = null;
 let fullPriceData = null;
 let fullStrategyData = null;
 let strategyTradeTooltip = null;
@@ -762,6 +763,152 @@ async function loadStrategyPerformance() {
   }
 }
 
+const DAY3_STRATEGY_COLORS = {
+  mlp: COLORS.price,
+  lstm: COLORS.sma,
+  equal_weight: COLORS.ma20,
+  my_mlp: COLORS.buy,
+  my_lstm: COLORS.sell,
+};
+let day3ComparisonData = null;
+let day3SelectedKey = null; // null = overview (all 5 strategies), otherwise a strategies key
+
+function renderDay3OverviewChart(data) {
+  const datasets = Object.entries(data.strategies).map(([key, strategy]) => ({
+    label: strategy.label,
+    data: strategy.portfolio,
+    borderColor: DAY3_STRATEGY_COLORS[key] || COLORS.strategy,
+    pointRadius: 0,
+    tension: 0.1,
+    fill: false,
+    borderWidth: 2,
+  }));
+
+  datasets.push({
+    label: "Benchmark",
+    data: data.benchmark,
+    borderColor: "#94a3b8",
+    borderDash: [4, 4],
+    pointRadius: 0,
+    tension: 0.1,
+    fill: false,
+    borderWidth: 2,
+  });
+
+  return { labels: data.dates, datasets };
+}
+
+function renderDay3StrategyChart(data, key) {
+  const strategy = data.strategies[key];
+  return {
+    labels: data.dates,
+    datasets: [
+      {
+        label: strategy.label,
+        data: strategy.portfolio,
+        borderColor: DAY3_STRATEGY_COLORS[key] || COLORS.strategy,
+        pointRadius: 0,
+        tension: 0.1,
+        fill: false,
+        borderWidth: 2,
+      },
+      {
+        label: "Benchmark",
+        data: data.benchmark,
+        borderColor: "#94a3b8",
+        borderDash: [4, 4],
+        pointRadius: 0,
+        tension: 0.1,
+        fill: false,
+        borderWidth: 2,
+      },
+    ],
+  };
+}
+
+function renderDay3Chart() {
+  if (!day3ComparisonData) return;
+
+  const titleEl = document.getElementById("day3ChartTitle");
+  const showAllBtn = document.getElementById("day3ShowAllBtn");
+  const chartData = day3SelectedKey
+    ? renderDay3StrategyChart(day3ComparisonData, day3SelectedKey)
+    : renderDay3OverviewChart(day3ComparisonData);
+
+  if (titleEl) {
+    titleEl.textContent = day3SelectedKey
+      ? `${day3ComparisonData.strategies[day3SelectedKey].label} vs Benchmark — Full Universe (Test Period)`
+      : "MLP vs LSTM vs Equal-Weight vs My MLP vs My LSTM — Full Universe (Test Period)";
+  }
+  if (showAllBtn) {
+    showAllBtn.style.display = day3SelectedKey ? "" : "none";
+  }
+
+  const canvasEl = document.getElementById("day3ComparisonChart");
+  const ctx = canvasEl.getContext("2d");
+  if (day3ComparisonChartInstance) {
+    day3ComparisonChartInstance.destroy();
+  }
+  day3ComparisonChartInstance = new Chart(ctx, {
+    type: "line",
+    data: chartData,
+    options: getChartOptions(),
+  });
+}
+
+function renderDay3RankingTable(ranking) {
+  const tbody = document.querySelector("#day3RankingTable tbody");
+  if (!tbody) return;
+
+  if (!ranking.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--muted);">No ranking data.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = ranking
+    .map((row, index) => `<tr data-key="${row.key}" style="cursor:pointer;">
+        <td>${index + 1}${index === 0 ? ' <span class="badge badge-yes">BEST</span>' : ""}</td>
+        <td>${row.label}</td>
+        <td>${Number(row.final_value).toLocaleString(undefined, { maximumFractionDigits: 0 })} EGP</td>
+        <td>${formatBadge(row.beat_benchmark)}</td>
+      </tr>`)
+    .join("");
+
+  tbody.querySelectorAll("tr[data-key]").forEach((row) => {
+    row.addEventListener("click", () => {
+      day3SelectedKey = row.dataset.key;
+      renderDay3Chart();
+    });
+  });
+}
+
+function bindDay3Controls() {
+  const showAllBtn = document.getElementById("day3ShowAllBtn");
+  if (showAllBtn) {
+    showAllBtn.addEventListener("click", () => {
+      day3SelectedKey = null;
+      renderDay3Chart();
+    });
+  }
+}
+
+async function loadDay3Comparison() {
+  setPanelLoading("day3ComparisonPanel", true);
+  try {
+    const res = await fetch(`${API}/day3-comparison`);
+    if (!res.ok) throw new Error(`/day3-comparison returned ${res.status}`);
+    day3ComparisonData = await res.json();
+    day3SelectedKey = null;
+
+    renderDay3Chart();
+    renderDay3RankingTable(day3ComparisonData.ranking || []);
+  } catch (err) {
+    console.error("[loadDay3Comparison] failed:", err);
+  } finally {
+    setPanelLoading("day3ComparisonPanel", false);
+  }
+}
+
 async function loadMetrics() {
   try {
     const res = await fetch(`${API}/metrics${getUniverseQuery()}`);
@@ -800,6 +947,7 @@ async function refreshDashboard() {
     await loadEquityChart();
     await loadMetrics();
     await loadStrategyPerformance();
+    await loadDay3Comparison();
   } catch (err) {
     console.error("[refreshDashboard] failed:", err);
   } finally {
@@ -812,9 +960,12 @@ bindUniverseToggle();
 bindTimeRangeToggle();
 bindAssetSelector();
 bindStrategyControls();
+bindDay3Controls();
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".strategy-trade-tooltip")) {
     hideStrategyTradeTooltip();
   }
 });
 refreshDashboard();
+
+loadDay3Comparison();

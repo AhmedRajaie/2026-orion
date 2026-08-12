@@ -10,6 +10,14 @@ from fastapi.middleware.cors import CORSMiddleware
 ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = ROOT / "src"
 FEATURES_PATH = ROOT / "dashboard" / "data" / "features.json"
+DAY3_EQUITY_PATHS = {
+    "mlp": (ROOT / "dashboard" / "data" / "day3_mlp_equity.json", "Professor's MLP"),
+    "lstm": (ROOT / "dashboard" / "data" / "day3_lstm_equity.json", "Professor's LSTM"),
+    "equal_weight": (ROOT / "dashboard" / "data" / "day3_equal_weight_equity.json", "Equal-Weight Benchmark"),
+    "my_mlp": (ROOT / "dashboard" / "data" / "day3_my_mlp_equity.json", "My MLP"),
+    "my_lstm": (ROOT / "dashboard" / "data" / "day3_my_lstm_equity.json", "My LSTM"),
+}
+DAY3_START_CAPITAL = 1000.0
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
@@ -307,3 +315,48 @@ def get_strategies(universe: str = "small"):
         }
 
     return {"dates": dates, "benchmark": benchmark, **strategies}
+
+
+@app.get("/day3-comparison")
+def get_day3_comparison():
+    """Week 2 Day 3 -- five full-universe strategies (result_mlp, result_lstm,
+    result_equal_weight, result_my_mlp, result_my_lstm) backtested on the same
+    test period, read from the equity curves the notebook writes to
+    dashboard/data/. Ranked by final EGP, same math as the notebook's own
+    ranking cell: portfolio[-1] * start_capital."""
+    dates = None
+    benchmark = None
+    strategies = {}
+    ranking = []
+
+    for key, (path, label) in DAY3_EQUITY_PATHS.items():
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"Equity file not found: {path}")
+
+        with path.open("r", encoding="utf-8") as handle:
+            curve = json.load(handle)
+
+        if dates is None:
+            dates = curve["dates"]
+            benchmark = round2_list(curve["benchmark"])
+
+        portfolio = round2_list(curve["portfolio"])
+        strategies[key] = {"label": label, "portfolio": portfolio}
+
+        final_value = round2(curve["portfolio"][-1] * DAY3_START_CAPITAL)
+        benchmark_final = round2(curve["benchmark"][-1] * DAY3_START_CAPITAL)
+        ranking.append({
+            "key": key,
+            "label": label,
+            "final_value": final_value,
+            "beat_benchmark": final_value > benchmark_final,
+        })
+
+    ranking.sort(key=lambda row: row["final_value"], reverse=True)
+
+    return {
+        "dates": dates,
+        "benchmark": benchmark,
+        "strategies": strategies,
+        "ranking": ranking,
+    }

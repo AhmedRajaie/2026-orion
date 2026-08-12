@@ -557,6 +557,35 @@
     </section>
 
     <section class="section-group">
+      <div class="section-heading">Week 2 Day 3 — Five-Strategy Comparison</div>
+      <div id="day3ComparisonPanel" class="panel panel--chart">
+        <div class="panel-title" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <span id="day3ChartTitle">MLP vs LSTM vs Equal-Weight vs My MLP vs My LSTM — Full Universe (Test Period)</span>
+          <button id="day3ShowAllBtn" type="button" class="range-btn" style="display:none;">Show all 5</button>
+        </div>
+        <canvas id="day3ComparisonChart"></canvas>
+      </div>
+      <div id="day3RankingPanel" class="panel panel--compact">
+        <div class="panel-title">Final EGP Ranking <span style="color: var(--muted); font-weight: 400; font-size: 12px;">(click a row to inspect one strategy)</span></div>
+        <div class="table-wrapper">
+          <table id="day3RankingTable" class="trade-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Strategy</th>
+                <th>Final EGP</th>
+                <th>Beat Benchmark</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="4" style="text-align:center; color: var(--muted);">Loading ranking…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-group">
       <div class="section-heading">Model Inputs</div>
       <div id="featuresPanelWrapper" class="panel panel--compact">
         <div class="panel-title">Model input (features)</div>
