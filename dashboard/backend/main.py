@@ -4,11 +4,16 @@ Run: uv run uvicorn dashboard.backend.main:app --reload --port 8000
 """FastAPI backend for the dashboard"""
 
 from pathlib import Path
+import math
+import os
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import torch
 import torch.nn as nn
 
@@ -17,12 +22,18 @@ app = FastAPI(title="EGX Trading Dashboard")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
 DATA_DIR = Path(__file__).parents[2] / "data" / "egx"
 MODEL_START_DATE = pd.Timestamp("2022-01-01")
+
+
+class ChatRequest(BaseModel):
+    message: str
+    symbol: str | None = None
 
 
 class DashboardLSTM(nn.Module):
@@ -105,9 +116,149 @@ def model_equity(symbol: str):
     }
 
 
+def _symbol_frame(symbol: str) -> pd.DataFrame | None:
+    file = DATA_DIR / f"{symbol.upper()}.csv"
+    if not file.exists():
+        return None
+    df = pd.read_csv(file, parse_dates=["date"]).sort_values("date").reset_index(drop=True)
+    if "close" not in df.columns:
+        return None
+    return df
+
+
+def _chat_market_snapshot(symbol: str) -> dict[str, Any] | None:
+    df = _symbol_frame(symbol)
+    if df is None:
+        return None
+
+    close = df["close"].astype(float)
+    ma9 = close.rolling(9).mean().iloc[-1]
+    ma20 = close.rolling(20).mean().iloc[-1]
+    last_close = float(close.iloc[-1])
+    prev_close = float(close.iloc[-2]) if len(close) > 1 else last_close
+    daily_return = (last_close / prev_close - 1.0) * 100.0
+    avg_volume = float(df["volume"].mean())
+    last_volume = float(df["volume"].iloc[-1])
+    volume_ratio = (last_volume / avg_volume) if avg_volume else 1.0
+    trend = "uptrend" if ma9 > ma20 else "downtrend"
+    price_change = ((last_close - prev_close) / prev_close) * 100.0
+    return {
+        "symbol": symbol.upper(),
+        "last_close": round(last_close, 2),
+        "daily_return": round(daily_return, 2),
+        "price_change": round(price_change, 2),
+        "ma9": round(float(ma9), 2),
+        "ma20": round(float(ma20), 2),
+        "trend": trend,
+        "volume_ratio": round(volume_ratio, 2),
+    }
+
+
+def _agent_debate(symbol: str, user_message: str) -> dict[str, Any]:
+    snapshot = _chat_market_snapshot(symbol)
+    if snapshot is None:
+        return {"error": "Unknown Symbol"}
+
+    direction = "bullish" if "buy" in user_message.lower() or "long" in user_message.lower() else "bearish" if "sell" in user_message.lower() or "short" in user_message.lower() else "neutral"
+    sentiment_score = 0.0
+    if snapshot["trend"] == "uptrend":
+        sentiment_score += 1.2
+    if snapshot["daily_return"] > 0:
+        sentiment_score += 1.0
+    if snapshot["volume_ratio"] > 1.1:
+        sentiment_score += 0.7
+    if snapshot["daily_return"] < 0:
+        sentiment_score -= 1.0
+    if snapshot["trend"] == "downtrend":
+        sentiment_score -= 1.2
+
+    bullish = {
+        "name": "Bullish Agent",
+        "stance": "Long bias",
+        "points": [
+            f"Price is {snapshot['last_close']:.2f} and moving average 9-day is above 20-day ({snapshot['ma9']:.2f} > {snapshot['ma20']:.2f}).",
+            f"Daily move is {snapshot['daily_return']:.2f}% with volume ratio {snapshot['volume_ratio']:.2f}, which supports momentum.",
+            "The prompt is aligned with a continuation setup unless a major resistance is broken."
+        ],
+        "score": max(0.0, round(50 + sentiment_score * 10, 1))
+    }
+
+    bearish = {
+        "name": "Bearish Agent",
+        "stance": "Risk-off bias",
+        "points": [
+            f"The move is only {snapshot['daily_return']:.2f}% and could fade if momentum slows below the recent trend.",
+            f"A lower volume environment or reversal at resistance would weaken the bullish setup.",
+            "The current setup still needs confirmation before taking aggressive long exposure."
+        ],
+        "score": max(0.0, round(50 - sentiment_score * 9, 1))
+    }
+
+    risk = {
+        "name": "Risk Analyst",
+        "stance": "Balanced bias",
+        "points": [
+            f"The stock has a {snapshot['trend']} structure, so the signal is conditional on confirmation.",
+            "We should size the position carefully and watch for a break either above or below the moving-average zone.",
+            "This is a good candidate for a measured trade rather than large conviction."
+        ],
+        "score": round(50 + (0.5 if snapshot['trend'] == 'uptrend' else -0.5) * 10, 1)
+    }
+
+    if direction == "bullish":
+        final_signal = "BUY" if sentiment_score >= 0 else "WATCH"
+    elif direction == "bearish":
+        final_signal = "SELL" if sentiment_score <= 0 else "WATCH"
+    else:
+        final_signal = "BUY" if sentiment_score > 0 else "SELL" if sentiment_score < 0 else "WATCH"
+
+    final_summary_lines = [
+        f"{snapshot['symbol']} is currently trading at {snapshot['last_close']:.2f} EGP.",
+        f"The short-term trend is {snapshot['trend']} with a daily return of {snapshot['daily_return']:.2f}%.",
+        f"The multi-agent view leans {final_signal.lower()} with risk management and confirmation before entering a position."
+    ]
+
+    return {
+        "symbol": snapshot["symbol"],
+        "signal": final_signal,
+        "reply": "\n".join(final_summary_lines),
+        "summary": final_summary_lines[2],
+        "agents": [bullish, bearish, risk],
+        "sentiment": "Positive" if sentiment_score > 0 else "Negative" if sentiment_score < 0 else "Neutral",
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/chat")
+def chat(message: ChatRequest):
+    symbol = (message.symbol or "EGAL").upper()
+    if not symbol:
+        symbol = "EGAL"
+
+    analysis = _agent_debate(symbol, message.message)
+    if "error" in analysis:
+        return {"error": analysis["error"]}
+
+    agent_summary = "\n".join(
+        [
+            f"{agent['name']} ({agent['stance']}): {', '.join(agent['points'])}"
+            for agent in analysis["agents"]
+        ]
+    )
+
+    return {
+        "symbol": analysis["symbol"],
+        "signal": analysis["signal"],
+        "reply": analysis["reply"],
+        "summary": analysis["summary"],
+        "sentiment": analysis["sentiment"],
+        "agents": analysis["agents"],
+        "full_response": agent_summary,
+    }
 
 
 @app.get("/model-comparison/{symbol}")

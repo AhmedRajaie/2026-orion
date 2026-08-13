@@ -1,4 +1,4 @@
-const API = "http://localhost:8000";
+const API = "http://127.0.0.1:8001";
 
 let equityChart = null;
 let chart = null;
@@ -11,6 +11,72 @@ let modelComparisonChart = null;
 let buySignals = [];
 let sellSignals = [];
 let modelComparisonData = null;
+
+// =========================
+// Chat bot
+// =========================
+
+function appendChatMessage(role, text, accent = "#38bdf8") {
+    const chat = document.getElementById("chatMessages");
+    const wrapper = document.createElement("div");
+    wrapper.style.display = "flex";
+    wrapper.style.justifyContent = role === "user" ? "flex-end" : "flex-start";
+
+    const bubble = document.createElement("div");
+    bubble.style.maxWidth = "80%";
+    bubble.style.padding = "10px 12px";
+    bubble.style.borderRadius = "12px";
+    bubble.style.background = role === "user" ? "#1d4ed8" : "#1e293b";
+    bubble.style.border = `1px solid ${accent}`;
+    bubble.style.color = "#f8fafc";
+    bubble.style.whiteSpace = "pre-wrap";
+    bubble.textContent = text;
+
+    wrapper.appendChild(bubble);
+    chat.appendChild(wrapper);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById("chatInput");
+    const symbol = document.getElementById("chatSymbol").value;
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    appendChatMessage("user", message, "#60a5fa");
+    input.value = "";
+
+    try {
+        const response = await fetch(`${API}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message, symbol })
+        });
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+            appendChatMessage("bot", data.error || "The market agent could not answer.", "#f87171");
+            return;
+        }
+
+        const signalText = `Signal: ${data.signal}\n\n${data.reply}`;
+        appendChatMessage("bot", signalText, "#22c55e");
+
+        if (Array.isArray(data.agents)) {
+            data.agents.forEach(agent => {
+                const lines = [
+                    `${agent.name} (${agent.stance})`,
+                    ...agent.points.map(point => `- ${point}`),
+                    `Score: ${agent.score}`
+                ].join("\n");
+                appendChatMessage("bot", lines, "#facc15");
+            });
+        }
+    } catch {
+        appendChatMessage("bot", "Connection error: the chat service is unavailable.", "#f87171");
+    }
+}
 
 // =========================
 // Health Check
@@ -44,9 +110,11 @@ async function loadUniverse() {
 
     const select = document.getElementById("symbolSelect");
     const multiSelect = document.getElementById("symbolMultiSelect");
+    const chatSymbol = document.getElementById("chatSymbol");
 
     select.innerHTML = "";
     multiSelect.innerHTML = "";
+    chatSymbol.innerHTML = "";
 
     symbols.forEach(symbol => {
 
@@ -61,6 +129,9 @@ async function loadUniverse() {
         const multiOption = option.cloneNode(true);
         multiOption.selected = true;
         multiSelect.appendChild(multiOption);
+
+        const chatOption = option.cloneNode(true);
+        chatSymbol.appendChild(chatOption);
 
     });
 
@@ -77,6 +148,13 @@ async function loadUniverse() {
         Array.from(multiSelect.options).forEach(option => option.selected = true);
         loadWeeklyStrategy();
     });
+    document.getElementById("sendChat").addEventListener("click", sendChatMessage);
+    document.getElementById("chatInput").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") sendChatMessage();
+    });
+
+    chatSymbol.value = symbols[0] || "EGAL";
+    appendChatMessage("bot", "Welcome to the market debate panel. Ask: buy, sell, or analyze a symbol.", "#38bdf8");
 
     loadWeeklyStrategy();
 
