@@ -8,9 +8,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from src.tradinglab.data_feed import DataFeed
-from src.tradinglab import metrics
-from src.tradinglab.indicators import sma
+from tradinglab.data_feed import DataFeed
+from tradinglab import metrics
+from tradinglab.indicators import sma
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]

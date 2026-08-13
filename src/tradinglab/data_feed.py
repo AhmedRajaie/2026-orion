@@ -89,6 +89,40 @@ class DataFeed:
         return cls(symbols=syms, dates=common, close=close, volume=volume, returns=returns)
 
 
+def load_symbol_full_history(data_dir: str | Path, symbol: str) -> pd.DataFrame:
+    """Load one symbol's full CSV history, sorted ascending, NOT intersected
+    with other symbols' calendars.
+
+    DataFeed.from_dir() trims every symbol down to the dates ALL symbols
+    share, which is right for a multi-asset portfolio but throws away years
+    of single-asset history unnecessarily. Single-asset tools (the
+    simulator's price/indicator/backtest endpoints) want the full series
+    instead, so they use this loader.
+    """
+    path = Path(data_dir) / f"{symbol}.csv"
+    df = pd.read_csv(path, parse_dates=["date"]).sort_values("date").reset_index(drop=True)
+    return df
+
+
+FIELD_COLUMNS = {"open": "open", "high": "high", "low": "low", "close": "close", "adj_close": "adj_close"}
+
+
+def resolve_price_field(df: pd.DataFrame, field: str) -> tuple[np.ndarray, str]:
+    """Pick the column the dashboard's price-field selector asked for.
+
+    Returns (series, resolved_field) — resolved_field differs from `field`
+    only for 'adj_close' on a CSV that doesn't have one, where it silently
+    falls back to 'close' (same fallback DataFeed.from_dir already applies
+    when building the multi-asset feed).
+    """
+    if field not in FIELD_COLUMNS:
+        raise ValueError(f"unknown price field '{field}'. use one of {sorted(FIELD_COLUMNS)}.")
+    column = FIELD_COLUMNS[field]
+    if column not in df.columns:
+        column = "close"
+    return df[column].to_numpy(dtype=float), ("close" if column == "close" else field)
+
+
 def load_egx30_returns(csv_path: str | Path, dates: pd.DatetimeIndex) -> np.ndarray | None:
     """Load a real EGX30 series (investing.com format) aligned to `dates`.
 

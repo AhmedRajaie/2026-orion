@@ -1,1136 +1,1262 @@
-<<<<<<< HEAD
-const API_BASE = "http://127.0.0.1:8000";
-
-const statusPanel = document.getElementById("status");
-const strategySelect = document.getElementById("strategy-select");
-const assetSelect = document.getElementById("asset-select");
-const assetControl = document.getElementById("asset-control");
-const assetDescription = document.getElementById("asset-description");
-const insightBanner = document.getElementById("insight-banner");
-
-let priceChart = null;
-let equityChart = null;
-let drawdownChart = null;
-
-
-function formatEGP(value) {
-  return new Intl.NumberFormat("en-EG", {
-    style: "currency",
-    currency: "EGP",
-    minimumFractionDigits: 2,
-  }).format(value);
-}
-
-
-function formatPercent(value) {
-  return `${Number(value).toFixed(2)}%`;
-}
-
-
-function setStatus(message, state = "") {
-  statusPanel.textContent = message;
-  statusPanel.className = `status ${state}`;
-}
-
-
-function setReturnColor(element, value) {
-  element.classList.remove("positive", "negative");
-  element.classList.add(value >= 0 ? "positive" : "negative");
-}
-
-
-function destroyCharts() {
-  for (const chart of [priceChart, equityChart, drawdownChart]) {
-    if (chart) chart.destroy();
-  }
-  priceChart = null;
-  equityChart = null;
-  drawdownChart = null;
-}
-
-
-function attachZoomReset(canvas, getChart) {
-  canvas.ondblclick = () => {
-    const chart = getChart();
-    if (chart && typeof chart.resetZoom === "function") {
-      chart.resetZoom();
-    }
-  };
-}
-
-
-function chartOptions(yTitle, indexMode = true) {
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: indexMode ? "index" : "nearest",
-      intersect: false,
-    },
-    plugins: {
-      legend: {
-        labels: { color: "#e8eef7" },
-      },
-      zoom: {
-        limits: { x: { minRange: 10 } },
-        pan: {
-          enabled: true,
-          mode: "x",
-          modifierKey: "shift",
-        },
-        zoom: {
-          wheel: { enabled: true, speed: 0.1 },
-          pinch: { enabled: true },
-          drag: {
-            enabled: true,
-            backgroundColor: "rgba(96, 165, 250, 0.15)",
-            borderColor: "#60a5fa",
-            borderWidth: 1,
-          },
-          mode: "x",
-        },
-      },
-    },
-    scales: {
-      x: {
-        ticks: { color: "#91a3ba", maxTicksLimit: 12 },
-        grid: { color: "rgba(145, 163, 186, 0.08)" },
-      },
-      y: {
-        title: { display: true, text: yTitle, color: "#91a3ba" },
-        ticks: { color: "#91a3ba" },
-        grid: { color: "rgba(145, 163, 186, 0.08)" },
-      },
-    },
-  };
-}
-
-
-function setCard(id, value, label, note = "") {
-  if (label) document.getElementById(`${id}-label`).textContent = label;
-  document.getElementById(`${id}-value`).textContent = value;
-  const noteElement = document.getElementById(`${id}-note`);
-  if (noteElement) noteElement.textContent = note;
-}
-
-
-function displaySmaMetrics(backtest) {
-  document.getElementById("final-value").textContent =
-    formatEGP(backtest.final_portfolio_value_egp);
-
-  const returnElement = document.getElementById("total-return");
-  returnElement.textContent = formatPercent(backtest.total_return_percent);
-  setReturnColor(returnElement, backtest.total_return_percent);
-
-  document.getElementById("max-drawdown").textContent =
-    `${formatEGP(backtest.max_drawdown_egp)} ` +
-    `(${formatPercent(backtest.max_drawdown_percent)})`;
-
-  document.getElementById("operations-label").textContent =
-    "Buy / sell operations";
-  document.getElementById("operations").textContent =
-    `${backtest.buy_operations} / ${backtest.sell_operations}`;
-  document.getElementById("operations-note").textContent =
-    `${backtest.total_operations} total operations`;
-
-  setCard(
-    "comparison",
-    backtest.open_position ? "Invested" : "Cash",
-    "Current position",
-    "Position at the final historical date",
-  );
-  setCard(
-    "cost",
-    formatEGP(0),
-    "Commission impact",
-    "Single-asset test assumes zero commission",
-  );
-}
-
-
-function displayMeanReversionMetrics(data) {
-  document.getElementById("final-value").textContent =
-    formatEGP(data.final_portfolio_value_egp);
-
-  const returnElement = document.getElementById("total-return");
-  returnElement.textContent = formatPercent(data.total_return_percent);
-  setReturnColor(returnElement, data.total_return_percent);
-
-  document.getElementById("max-drawdown").textContent =
-    `${formatEGP(data.max_drawdown_egp)} ` +
-    `(${formatPercent(data.max_drawdown_percent)})`;
-
-  document.getElementById("operations-label").textContent = "Weight changes";
-  document.getElementById("operations").textContent =
-    data.total_trades.toLocaleString();
-  document.getElementById("operations-note").textContent =
-    `${data.average_assets_held.toFixed(1)} assets held on average`;
-
-  setCard(
-    "comparison",
-    formatEGP(data.benchmark_final_value_egp),
-    "Equal-weight benchmark",
-    `Strategy Sharpe: ${data.sharpe.toFixed(3)}`,
-  );
-  setCard(
-    "cost",
-    formatEGP(data.commission_drag_egp),
-    "Commission drag",
-    `No-cost result: ${formatEGP(data.no_cost_final_value_egp)}`,
-  );
-}
-
-
-function renderSmaPriceChart(indicators, trades) {
-  const canvas = document.getElementById("price-chart");
-  const labels = indicators.data.map((row) => row.date);
-  const buys = new Map(
-    trades
-      .filter((trade) => trade.operation === "BUY")
-      .map((trade) => [trade.execution_date, trade.execution_price]),
-  );
-  const sells = new Map(
-    trades
-      .filter((trade) => trade.operation === "SELL")
-      .map((trade) => [trade.execution_date, trade.execution_price]),
-  );
-
-  priceChart = new Chart(canvas, {
-=======
-<<<<<<< HEAD
-// Dashboard frontend for the EGX Strategy Lab.
-const API = "http://localhost:8000";
-const state = {
-  assets: [],
-  results: null,
-  strategyPerformance: null,
-  theme: "dark",
-  charts: {},
-};
-
-const els = {
-  backendBadge: document.getElementById("backendBadge"),
-  statusBanner: document.getElementById("statusBanner"),
-  assetSelect: document.getElementById("assetSelect"),
-  initialCash: document.getElementById("initialCash"),
-  fastWindow: document.getElementById("fastWindow"),
-  slowWindow: document.getElementById("slowWindow"),
-  strategyPerformancePanel: document.getElementById("strategyPerformancePanel"),
-  strategyPerformanceSummary: document.getElementById("strategyPerformanceSummary"),
-  strategyPerformanceBadges: document.getElementById("strategyPerformanceBadges"),
-  strategyComparisonChartPanel: document.getElementById("strategyComparisonChartPanel"),
-  strategyMetricsChartPanel: document.getElementById("strategyMetricsChartPanel"),
-  strategyComparisonChart: document.getElementById("strategyComparisonChart"),
-  strategyMetricsChart: document.getElementById("strategyMetricsChart"),
-  runBtn: document.getElementById("runBtn"),
-  resetBtn: document.getElementById("resetBtn"),
-  refreshBtn: document.getElementById("refreshBtn"),
-  themeToggle: document.getElementById("themeToggle"),
-  kpiRow: document.getElementById("kpiRow"),
-  resultsSection: document.getElementById("resultsSection"),
-  emptyState: document.getElementById("emptyState"),
-  summaryText: document.getElementById("summaryText"),
-  summaryBadges: document.getElementById("summaryBadges"),
-  positionSnapshot: document.getElementById("positionSnapshot"),
-  tradeTableBody: document.getElementById("tradeTableBody"),
-  tradeSearch: document.getElementById("tradeSearch"),
-  tradeFilter: document.getElementById("tradeFilter"),
-  tradeSort: document.getElementById("tradeSort"),
-  fullscreenBtn: document.getElementById("fullscreenBtn"),
-  downloadBtn: document.getElementById("downloadBtn"),
-};
-
-function setBanner(message, kind = "") {
-  els.statusBanner.textContent = message;
-  els.statusBanner.className = `status-banner ${kind}`.trim();
-}
-
-function setTheme(theme) {
-  document.documentElement.classList.toggle("light", theme === "light");
-  state.theme = theme;
-  els.themeToggle.textContent = theme === "light" ? "🌙 Dark" : "☀️ Light";
-}
-
-function setLoading(isLoading) {
-  els.runBtn.disabled = isLoading;
-}
-=======
 // Dashboard frontend. Grows via dashboard/tasks/.
 const API = "http://localhost:8000";
->>>>>>> origin/main
+
+// Both columns are the validated dataviz palette's categorical hues, light
+// and dark steps of the SAME eight — not two different palettes. Status
+// colors (good/critical/warning) are mode-invariant, so only one set.
+const THEME_COLORS = {
+  dark: { blue: "#3987e5", orange: "#d95926", aqua: "#199e70", yellow: "#c98500", magenta: "#d55181", green: "#008300", violet: "#9085e9", red: "#e66767", text: "#c3c2b7", grid: "#2c2c2a" },
+  light: { blue: "#2a78d6", orange: "#eb6834", aqua: "#1baf7a", yellow: "#eda100", magenta: "#e87ba4", green: "#008300", violet: "#4a3aa7", red: "#e34948", text: "#52514e", grid: "#e1e0d9" },
+};
+const STATUS = { good: "#0ca30c", critical: "#d03b3b", warning: "#fab219" };
+
+let COLOR = {};
+
+function applyTheme(theme, { rerender = true } = {}) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("dashboard-theme", theme);
+  COLOR = { ...THEME_COLORS[theme], ...STATUS };
+  document.getElementById("themeIcon").textContent = theme === "dark" ? "🌙" : "☀️";
+  document.getElementById("themeLabel").textContent = theme === "dark" ? "Dark" : "Light";
+  if (rerender) rerenderAll();
+}
+
+// Drives both the single-select "Chart indicator" dropdown and what gets
+// fetched/plotted. kind "overlay" draws on the price chart; kind
+// "oscillator" gets the dedicated indicator panel (synced zoom with price).
+const INDICATORS = [
+  { key: "sma", label: "SMA", kind: "overlay",
+    params: [{ name: "sma_window", label: "Period", default: 20, step: 1 }] },
+  { key: "ema", label: "EMA", kind: "overlay",
+    params: [{ name: "ema_window", label: "Period", default: 20, step: 1 }] },
+  { key: "bb", label: "Bollinger Bands", kind: "overlay",
+    params: [{ name: "bb_window", label: "Period", default: 20, step: 1 }, { name: "bb_std", label: "Std dev", default: 2, step: 0.1 }] },
+  { key: "vwap", label: "VWAP", kind: "overlay",
+    params: [{ name: "vwap_window", label: "Window", default: 20, step: 1 }] },
+  { key: "ichimoku", label: "Ichimoku Cloud", kind: "overlay",
+    params: [{ name: "ichimoku_tenkan", label: "Tenkan", default: 9, step: 1 }, { name: "ichimoku_kijun", label: "Kijun", default: 26, step: 1 }, { name: "ichimoku_senkou_b", label: "Senkou B", default: 52, step: 1 }] },
+  { key: "psar", label: "Parabolic SAR", kind: "overlay",
+    params: [{ name: "psar_step", label: "Step", default: 0.02, step: 0.01 }, { name: "psar_max", label: "Max step", default: 0.2, step: 0.01 }] },
+
+  { key: "rsi", label: "RSI", kind: "oscillator",
+    params: [{ name: "rsi_window", label: "Period", default: 14, step: 1 }] },
+  { key: "macd", label: "MACD", kind: "oscillator",
+    params: [{ name: "macd_fast", label: "Fast", default: 12, step: 1 }, { name: "macd_slow", label: "Slow", default: 26, step: 1 }, { name: "macd_signal", label: "Signal", default: 9, step: 1 }] },
+  { key: "stoch", label: "Stochastic", kind: "oscillator",
+    params: [{ name: "stoch_k", label: "%K", default: 14, step: 1 }, { name: "stoch_d", label: "%D", default: 3, step: 1 }] },
+  { key: "atr", label: "ATR", kind: "oscillator",
+    params: [{ name: "atr_window", label: "Period", default: 14, step: 1 }] },
+  { key: "adx", label: "ADX", kind: "oscillator",
+    params: [{ name: "adx_window", label: "Period", default: 14, step: 1 }] },
+  { key: "obv", label: "OBV", kind: "oscillator", params: [] },
+];
+const DEFAULT_INDICATOR_KEY = "rsi";
+
+const charts = {};        // name -> Chart instance, so we can destroy() before redraw
+const state = {
+  universe: "small", // TASK_05: "small" (6-stock teaching set) or "full" (all of data/egx)
+  symbols: [], latestBacktest: null, latestIndicators: null, latestSymbol: null,
+  latestForecast: null, latestCompareSymbols: null, latestComparePrices: null, latestCompareRiskReward: null,
+  latestBaseline: null, latestStrategyComparison: null,
+  runHistory: [],
+};
+
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url} -> ${r.status}`);
+  return r.json();
+}
 
 async function checkHealth() {
   try {
-    const r = await fetch(`${API}/health`);
-    const j = await r.json();
-<<<<<<< HEAD
-    els.backendBadge.textContent = `backend: ${j.status}`;
-    els.backendBadge.className = "badge good";
-    setBanner("Backend ready. Select an asset and run a backtest.");
-  } catch (e) {
-    els.backendBadge.textContent = "backend: offline";
-    els.backendBadge.className = "badge bad";
-    setBanner("Backend not reachable — start uvicorn on port 8000.", "error");
-  }
-}
-
-async function loadAssets() {
-  try {
-    const r = await fetch(`${API}/assets`);
-    const j = await r.json();
-    state.assets = j.assets || [];
-    els.assetSelect.innerHTML = state.assets
-      .map((asset) => `<option value="${asset}">${asset}</option>`)
-      .join("");
-  } catch (e) {
-    setBanner("Unable to load assets from the backend.", "error");
-  }
-}
-
-function validateInputs() {
-  const initialCash = Number(els.initialCash.value);
-  const fastWindow = Number(els.fastWindow.value);
-  const slowWindow = Number(els.slowWindow.value);
-  if (!Number.isFinite(initialCash) || initialCash <= 0) {
-    setBanner("Initial cash must be a positive number.", "error");
-    return false;
-  }
-  if (!Number.isFinite(fastWindow) || fastWindow <= 0) {
-    setBanner("Fast MA must be a positive integer.", "error");
-    return false;
-  }
-  if (!Number.isFinite(slowWindow) || slowWindow <= 0) {
-    setBanner("Slow MA must be a positive integer.", "error");
-    return false;
-  }
-  if (fastWindow >= slowWindow) {
-    setBanner("Fast MA must be smaller than Slow MA.", "error");
-    return false;
-  }
-  return true;
-}
-
-async function runBacktest() {
-  if (!validateInputs()) return;
-  setLoading(true);
-  setBanner("Running backtest…");
-  try {
-    const payload = {
-      symbol: els.assetSelect.value,
-      initial_cash: Number(els.initialCash.value),
-      fast_window: Number(els.fastWindow.value),
-      slow_window: Number(els.slowWindow.value),
-    };
-
-    const [backtestRes, performanceRes] = await Promise.all([
-      fetch(`${API}/backtest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }),
-      fetch(
-        `${API}/api/strategy-performance?symbol=${encodeURIComponent(payload.symbol)}&initial_cash=${encodeURIComponent(
-          payload.initial_cash,
-        )}&fast_window=${encodeURIComponent(payload.fast_window)}&slow_window=${encodeURIComponent(payload.slow_window)}`,
-      ),
-    ]);
-
-    const backtestResult = await backtestRes.json();
-    const strategyPerformance = await performanceRes.json();
-
-    if (!backtestRes.ok) throw new Error(backtestResult.detail || "Backtest failed");
-    if (!performanceRes.ok) throw new Error(strategyPerformance.detail || "Strategy performance failed");
-
-    state.results = backtestResult;
-    state.strategyPerformance = strategyPerformance;
-    renderResults(backtestResult);
-    renderStrategyPerformance(strategyPerformance, backtestResult);
-    setBanner(`Backtest complete for ${backtestResult.symbol}.`, "success");
-  } catch (e) {
-    setBanner(e.message || "Backtest failed.", "error");
-  } finally {
-    setLoading(false);
-  }
-}
-
-function fmtCurrency(value) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "EGP", maximumFractionDigits: 2 }).format(value || 0);
-}
-
-function fmtPercent(value) {
-  return `${Number(value || 0).toFixed(2)}%`;
-}
-
-function getMetricClass(value) {
-  if (value > 0) return "positive";
-  if (value < 0) return "negative";
-  return "neutral";
-}
-
-function renderKpis(result) {
-  const metrics = [
-    { title: "Final Value", value: fmtCurrency(result.final_value), cls: getMetricClass(result.final_value - result.initial_cash) },
-    { title: "P/L", value: fmtCurrency(result.profit_loss), cls: getMetricClass(result.profit_loss) },
-    { title: "Return %", value: fmtPercent(result.return_percent), cls: getMetricClass(result.return_percent) },
-    { title: "Drawdown", value: fmtCurrency(result.max_drawdown_egp), cls: "negative" },
-    { title: "Buy Ops", value: result.buy_count, cls: "neutral" },
-    { title: "Sell Ops", value: result.sell_count, cls: "neutral" },
-    { title: "Open Pos", value: result.open_position ? "Yes" : "No", cls: result.open_position ? "positive" : "neutral" },
-  ];
-
-  els.kpiRow.innerHTML = metrics
-    .map((item) => `<article class="metric-card ${item.cls}"><h3>${item.title}</h3><div class="metric-value">${item.value}</div></article>`)
-    .join("");
-}
-
-function renderSummary(result) {
-  els.summaryText.innerHTML = [
-    `Buy when ${result.symbol} is above the fast MA and the fast MA is above the slow MA.`,
-    `Sell when the fast MA falls below the slow MA.`,
-    `Starting cash: ${fmtCurrency(result.initial_cash)}`,
-    `Selected asset: ${result.symbol}`,
-    `Position remains open at the end: ${result.open_position ? "Yes" : "No"}`,
-  ].map((line) => `<div>${line}</div>`).join("");
-
-  const lastTrade = result.trades?.[result.trades.length - 1];
-  els.summaryBadges.innerHTML = `
-    <span class="pill">${result.return_percent > 0 ? "Positive" : result.return_percent < 0 ? "Loss" : "Neutral"}</span>
-    <span class="pill">${result.open_position ? "Open Position" : "Flat Position"}</span>
-  `;
-
-  els.positionSnapshot.innerHTML = `
-    <div><strong>Last Trade</strong><br />${lastTrade ? `${lastTrade.operation} · ${lastTrade.date}` : "None yet"}</div>
-    <div><strong>Current Position</strong><br />${result.remaining_shares > 0 ? `${result.remaining_shares} shares` : "No open shares"}</div>
-  `;
-}
-
-function destroyCharts() {
-  Object.values(state.charts).forEach((chart) => chart.destroy());
-  state.charts = {};
-}
-
-function destroyStrategyCharts() {
-  ["strategyComparison", "strategyMetrics"].forEach((key) => {
-    if (state.charts[key]) {
-      state.charts[key].destroy();
-      delete state.charts[key];
-    }
-  });
-}
-
-function buildTooltipLabel(context) {
-  const item = context[0];
-  if (!item) return "";
-  const index = item.dataIndex;
-  const date = state.results?.dates?.[index];
-  const price = state.results?.prices?.[index];
-  const fastMa = state.results?.fast_ma?.[index];
-  const slowMa = state.results?.slow_ma?.[index];
-  const portfolio = state.results?.portfolio_values?.[index];
-  const trade = state.results?.trades?.find((entry) => entry.date === date);
-  const rows = [
-    `Date: ${date}`,
-    `Price: ${fmtCurrency(price)}`,
-    `MA9: ${fastMa != null ? fmtCurrency(fastMa) : "n/a"}`,
-    `MA20: ${slowMa != null ? fmtCurrency(slowMa) : "n/a"}`,
-    `Portfolio: ${fmtCurrency(portfolio)}`,
-  ];
-  if (trade) rows.push(`Trade: ${trade.operation}`);
-  return rows.join("\n");
-}
-
-function renderCharts(result) {
-  destroyCharts();
-  const labels = result.dates || [];
-  const priceCtx = document.getElementById("priceChart").getContext("2d");
-  const portfolioCtx = document.getElementById("portfolioChart").getContext("2d");
-  const drawdownCtx = document.getElementById("drawdownChart").getContext("2d");
-
-  const baseOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: "index", intersect: false },
-    plugins: {
-      legend: { labels: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim(), boxWidth: 10, usePointStyle: true } },
-      tooltip: { enabled: true, backgroundColor: "rgba(7, 12, 24, 0.92)", titleColor: "#fff", bodyColor: "#fff", borderColor: "rgba(255,255,255,0.1)", borderWidth: 1, padding: 10, displayColors: false, callbacks: { label: () => "" , title: (items) => buildTooltipLabel(items) } },
-    },
-    scales: {
-      x: { grid: { color: "rgba(255,255,255,0.06)" }, ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim(), maxTicksLimit: 8 } },
-      y: { grid: { color: "rgba(255,255,255,0.06)" }, ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
-    },
-  };
-
-  const buyPoints = [];
-  const sellPoints = [];
-  (result.trades || []).forEach((trade) => {
-    const index = labels.indexOf(trade.date);
-    if (index >= 0) {
-      if (trade.operation === "BUY") buyPoints.push({ x: index, y: trade.price });
-      else sellPoints.push({ x: index, y: trade.price });
-    }
-  });
-
-  state.charts.price = new Chart(priceCtx, {
->>>>>>> origin/Kanzy_Kabesh
-    type: "line",
-    data: {
-      labels,
-      datasets: [
-        {
-<<<<<<< HEAD
-          label: "Closing price",
-          data: indicators.data.map((row) => row.close),
-          borderColor: "#e8eef7",
-          borderWidth: 1.2,
-          pointRadius: 0,
-        },
-        {
-          label: "SMA 9",
-          data: indicators.data.map((row) => row.ma9),
-          borderColor: "#32d583",
-          borderWidth: 1.5,
-          pointRadius: 0,
-        },
-        {
-          label: "SMA 20",
-          data: indicators.data.map((row) => row.ma20),
-          borderColor: "#f59e0b",
-          borderWidth: 1.5,
-          pointRadius: 0,
-        },
-        {
-          label: "Buy",
-          data: labels.map((date) => buys.get(date) ?? null),
-          borderColor: "#32d583",
-          backgroundColor: "#32d583",
-          pointStyle: "triangle",
-          pointRadius: labels.map((date) => (buys.has(date) ? 7 : 0)),
-          showLine: false,
-        },
-        {
-          label: "Sell",
-          data: labels.map((date) => sells.get(date) ?? null),
-          borderColor: "#ff6b6b",
-          backgroundColor: "#ff6b6b",
-          pointStyle: "triangle",
-          pointRotation: 180,
-          pointRadius: labels.map((date) => (sells.has(date) ? 7 : 0)),
-          showLine: false,
-        },
-      ],
-    },
-    options: chartOptions("Price"),
-  });
-  attachZoomReset(canvas, () => priceChart);
-}
-
-
-function renderSmaEquityChart(backtest) {
-  const canvas = document.getElementById("equity-chart");
-  const equity = backtest.equity_curve;
-  equityChart = new Chart(canvas, {
-    type: "line",
-    data: {
-      labels: equity.map((row) => row.date),
-      datasets: [
-        {
-          label: "Portfolio value",
-          data: equity.map((row) => row.portfolio_value),
-          borderColor: "#60a5fa",
-          backgroundColor: "rgba(96, 165, 250, 0.12)",
-          fill: true,
-          borderWidth: 2,
-          pointRadius: 0,
-        },
-        {
-          label: "Running peak",
-          data: equity.map((row) => row.running_peak),
-          borderColor: "#91a3ba",
-          borderDash: [6, 6],
-          borderWidth: 1,
-=======
-          label: "Close",
-          data: result.prices,
-          borderColor: "#6f7dff",
-          backgroundColor: "rgba(111,125,255,0.15)",
-          borderWidth: 2,
-          pointRadius: 0,
-          tension: 0.35,
-          cubicInterpolationMode: "monotone",
-        },
-        {
-          label: "MA9",
-          data: result.fast_ma,
-          borderColor: "#35d7a8",
-          borderWidth: 1.6,
-          pointRadius: 0,
-          tension: 0.35,
-          cubicInterpolationMode: "monotone",
-        },
-        {
-          label: "MA20",
-          data: result.slow_ma,
-          borderColor: "#ffc36b",
-          borderWidth: 1.4,
-          pointRadius: 0,
-          tension: 0.35,
-          cubicInterpolationMode: "monotone",
-        },
-        {
-          label: "Buy",
-          data: buyPoints,
-          showLine: false,
-          pointRadius: 4,
-          pointStyle: "circle",
-          pointBackgroundColor: "#35d7a8",
-          pointBorderColor: "#35d7a8",
-        },
-        {
-          label: "Sell",
-          data: sellPoints,
-          showLine: false,
-          pointRadius: 4,
-          pointStyle: "circle",
-          pointBackgroundColor: "#ff6474",
-          pointBorderColor: "#ff6474",
-        },
-      ],
-    },
-    options: { ...baseOptions, plugins: { ...baseOptions.plugins, legend: { ...baseOptions.plugins.legend, position: "bottom" } } },
-  });
-
-  state.charts.portfolio = new Chart(portfolioCtx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [{ label: "Portfolio", data: result.portfolio_values, borderColor: "#6f7dff", backgroundColor: "rgba(111,125,255,0.12)", borderWidth: 2, fill: false, tension: 0.35, pointRadius: 0 }],
-    },
-    options: baseOptions,
-  });
-
-  state.charts.drawdown = new Chart(drawdownCtx, {
-    type: "line",
-    data: {
-      labels,
-      datasets: [{ label: "Drawdown", data: result.drawdown_values, borderColor: "#ff6474", backgroundColor: "rgba(255,100,116,0.16)", fill: true, borderWidth: 2, tension: 0.25, pointRadius: 0 }],
-    },
-    options: baseOptions,
-  });
-}
-
-function filterTrades(result) {
-  const query = els.tradeSearch.value.trim().toLowerCase();
-  const mode = els.tradeFilter.value;
-  const sortMode = els.tradeSort.value;
-  const trades = (result.trades || []).filter((trade) => {
-    const matchesText = [trade.date, trade.operation, trade.price, trade.shares].join(" ").toLowerCase().includes(query);
-    const matchesMode = mode === "ALL" || trade.operation === mode;
-    return matchesText && matchesMode;
-  });
-  trades.sort((a, b) => {
-    const aDate = new Date(a.date);
-    const bDate = new Date(b.date);
-    return sortMode === "newest" ? bDate - aDate : aDate - bDate;
-  });
-  return trades;
-}
-
-function renderTrades(result) {
-  const trades = filterTrades(result);
-  els.tradeTableBody.innerHTML = trades.length
-    ? trades.map((trade) => `<tr><td>${trade.date}</td><td><span class="badge-${trade.operation.toLowerCase()}">${trade.operation}</span></td><td>${fmtCurrency(trade.price)}</td><td>${trade.shares}</td><td>${fmtCurrency(trade.portfolio_value)}</td></tr>`).join("")
-    : '<tr><td colspan="5">No trades match the current filters.</td></tr>';
-}
-
-function renderResults(result) {
-  els.resultsSection.hidden = false;
-  els.emptyState.hidden = true;
-  renderKpis(result);
-  renderSummary(result);
-  renderCharts(result);
-  renderTrades(result);
-}
-
-function renderStrategyPerformance(performance, baseResult) {
-  const ma = performance.ma_crossover;
-  const weekly = performance.weekly_mean_reversion;
-  const comparisonLabels = ma.dates.length <= weekly.dates.length ? ma.dates : weekly.dates;
-
-  els.strategyPerformancePanel.hidden = false;
-  els.strategyComparisonChartPanel.hidden = false;
-  els.strategyMetricsChartPanel.hidden = false;
-
-  els.strategyPerformanceSummary.innerHTML = [
-    `MA crossover strategy run on ${ma.symbol} with fast=${ma.fast_window} and slow=${ma.slow_window}.`,
-    `Weekly mean reversion strategy run across the full EGX universe.`,
-    `Selected cash base: ${fmtCurrency(ma.initial_cash)}.`,
-    `MA crossover return: ${fmtPercent(ma.return_percent)} vs weekly return: ${fmtPercent(weekly.return_percent)}.`,
-  ].map((line) => `<div>${line}</div>`).join("");
-
-  els.strategyPerformanceBadges.innerHTML = `
-    <span class="pill">MA return ${fmtPercent(ma.return_percent)}</span>
-    <span class="pill">Weekly return ${fmtPercent(weekly.return_percent)}</span>
-    <span class="pill">MA drawdown ${fmtPercent(ma.max_drawdown_percent)}</span>
-    <span class="pill">Weekly drawdown ${fmtPercent(weekly.max_drawdown_percent)}</span>
-  `;
-
-  destroyStrategyCharts();
-
-  state.charts.strategyComparison = new Chart(els.strategyComparisonChart.getContext("2d"), {
-    type: "line",
-    data: {
-      labels: comparisonLabels,
-      datasets: [
-        {
-          label: "MA Crossover",
-          data: ma.portfolio_values.slice(0, comparisonLabels.length),
-          borderColor: "#6f7dff",
-          backgroundColor: "rgba(111,125,255,0.16)",
-          borderWidth: 2,
-          tension: 0.35,
-          pointRadius: 0,
-        },
-        {
-          label: "Weekly Mean Reversion",
-          data: weekly.portfolio_values.slice(0, comparisonLabels.length),
-          borderColor: "#35d7a8",
-          backgroundColor: "rgba(53,215,168,0.16)",
-          borderWidth: 2,
-          tension: 0.35,
->>>>>>> origin/Kanzy_Kabesh
-          pointRadius: 0,
-        },
-      ],
-    },
-<<<<<<< HEAD
-    options: chartOptions("Portfolio value (EGP)"),
-  });
-  attachZoomReset(canvas, () => equityChart);
-}
-
-
-function renderSmaDrawdownChart(backtest) {
-  const canvas = document.getElementById("drawdown-chart");
-  const equity = backtest.equity_curve;
-  drawdownChart = new Chart(canvas, {
-    type: "line",
-    data: {
-      labels: equity.map((row) => row.date),
-      datasets: [{
-        label: "Drawdown",
-        data: equity.map((row) => row.drawdown_percent),
-        borderColor: "#ff6b6b",
-        backgroundColor: "rgba(255, 107, 107, 0.3)",
-        fill: true,
-        borderWidth: 1.5,
-        pointRadius: 0,
-      }],
-    },
-    options: chartOptions("Drawdown (%)"),
-  });
-  attachZoomReset(canvas, () => drawdownChart);
-}
-
-
-function renderMeanAllocationChart(data) {
-  const canvas = document.getElementById("price-chart");
-  const allocations = data.latest_allocations;
-  priceChart = new Chart(canvas, {
-    type: "bar",
-    data: {
-      labels: allocations.map((row) => row.symbol),
-      datasets: [{
-        label: "Portfolio weight (%)",
-        data: allocations.map((row) => row.weight_percent),
-        backgroundColor: allocations.map((_, index) =>
-          index < 3 ? "#32d583" : "rgba(96, 165, 250, 0.72)"
-        ),
-        borderRadius: 5,
-      }],
-    },
-    options: {
-      ...chartOptions("Weight (%)", false),
-      plugins: {
-        ...chartOptions("Weight (%)", false).plugins,
-        tooltip: {
-          callbacks: {
-            afterLabel(context) {
-              const row = allocations[context.dataIndex];
-              return [
-                `5-day return: ${formatPercent(row.five_day_return_percent)}`,
-                `Allocation: ${formatEGP(row.amount_egp)}`,
-              ];
-            },
-          },
-        },
-      },
-    },
-  });
-  attachZoomReset(canvas, () => priceChart);
-}
-
-
-function renderMeanEquityChart(data) {
-  const canvas = document.getElementById("equity-chart");
-  const equity = data.equity_curve;
-  equityChart = new Chart(canvas, {
-    type: "line",
-    data: {
-      labels: equity.map((row) => row.date),
-      datasets: [
-        {
-          label: `Strategy after ${formatPercent(data.commission_percent)} commission`,
-          data: equity.map((row) => row.portfolio_value),
-          borderColor: "#60a5fa",
-          borderWidth: 2,
-          pointRadius: 0,
-        },
-        {
-          label: "Strategy without commission",
-          data: equity.map((row) => row.no_cost_value),
-          borderColor: "#32d583",
-          borderWidth: 1.5,
-          pointRadius: 0,
-        },
-        {
-          label: "Equal-weight benchmark",
-          data: equity.map((row) => row.benchmark_value),
-          borderColor: "#f59e0b",
-          borderDash: [6, 6],
-          borderWidth: 1.5,
-          pointRadius: 0,
-        },
-      ],
-    },
-    options: chartOptions("Portfolio value (EGP)"),
-  });
-  attachZoomReset(canvas, () => equityChart);
-}
-
-
-function renderMeanDrawdownChart(data) {
-  const canvas = document.getElementById("drawdown-chart");
-  const equity = data.equity_curve;
-  drawdownChart = new Chart(canvas, {
-    type: "line",
-    data: {
-      labels: equity.map((row) => row.date),
-      datasets: [{
-        label: "Strategy drawdown",
-        data: equity.map((row) => row.drawdown_percent),
-        borderColor: "#ff6b6b",
-        backgroundColor: "rgba(255, 107, 107, 0.3)",
-        fill: true,
-        borderWidth: 1.5,
-        pointRadius: 0,
-      }],
-    },
-    options: chartOptions("Drawdown (%)"),
-  });
-  attachZoomReset(canvas, () => drawdownChart);
-}
-
-
-function renderSmaTrades(trades) {
-  document.getElementById("table-head").innerHTML = `
-    <tr>
-      <th>Operation</th><th>Signal date</th><th>Execution date</th>
-      <th>Price</th><th>Shares</th><th>Amount</th>
-    </tr>`;
-  const table = document.getElementById("trade-table");
-  table.innerHTML = "";
-  if (trades.length === 0) {
-    table.innerHTML = '<tr><td colspan="6">No operations were generated.</td></tr>';
-    return;
-  }
-  for (const trade of trades) {
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td class="${trade.operation.toLowerCase()}">${trade.operation}</td>
-      <td>${trade.signal_date}</td><td>${trade.execution_date}</td>
-      <td>${trade.execution_price.toFixed(4)}</td>
-      <td>${trade.shares.toFixed(6)}</td><td>${formatEGP(trade.amount_egp)}</td>`;
-    table.appendChild(row);
-  }
-}
-
-
-function renderAllocations(data) {
-  document.getElementById("table-head").innerHTML = `
-    <tr><th>Asset</th><th>Five-day return</th><th>Weight</th><th>EGP allocation</th></tr>`;
-  const table = document.getElementById("trade-table");
-  table.innerHTML = "";
-  if (data.latest_allocations.length === 0) {
-    table.innerHTML = '<tr><td colspan="4">No recent losers; portfolio is in cash.</td></tr>';
-    return;
-  }
-  for (const allocation of data.latest_allocations) {
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td class="buy">${allocation.symbol}</td>
-      <td class="negative">${formatPercent(allocation.five_day_return_percent)}</td>
-      <td>${formatPercent(allocation.weight_percent)}</td>
-      <td>${formatEGP(allocation.amount_egp)}</td>`;
-    table.appendChild(row);
-  }
-}
-
-
-async function loadSmaAsset(symbol) {
-  try {
-    setStatus(`Loading ${symbol}…`);
-    assetSelect.disabled = true;
-    destroyCharts();
-    const safeSymbol = encodeURIComponent(symbol);
-    const [indicatorsResponse, backtestResponse] = await Promise.all([
-      fetch(`${API_BASE}/indicators/${safeSymbol}`),
-      fetch(`${API_BASE}/backtest/${safeSymbol}`),
-    ]);
-    if (!indicatorsResponse.ok || !backtestResponse.ok) {
-      throw new Error(`Could not load ${symbol}.`);
-    }
-    const indicators = await indicatorsResponse.json();
-    const backtest = await backtestResponse.json();
-
-    displaySmaMetrics(backtest);
-    renderSmaPriceChart(indicators, backtest.trades);
-    renderSmaEquityChart(backtest);
-    renderSmaDrawdownChart(backtest);
-    renderSmaTrades(backtest.trades);
-
-    document.getElementById("primary-chart-title").textContent =
-      `${symbol} price, SMA 9/20, and executions`;
-    document.getElementById("equity-chart-title").textContent = "Portfolio equity curve";
-    document.getElementById("drawdown-chart-title").textContent = "Portfolio drawdown";
-    document.getElementById("table-title").textContent = "Trade history";
-    assetDescription.textContent =
-      `${symbol} · SMA 9/20 crossover · Starting capital: 1,000 EGP`;
-    insightBanner.textContent =
-      `The strategy buys ${symbol} after SMA 9 crosses above SMA 20 and sells after the reverse crossover. Signals execute at the next available close.`;
-    setStatus(`${symbol}: ready`, "ok");
-  } catch (error) {
-    console.error(error);
-    setStatus(`${symbol}: failed to load`, "error");
-  } finally {
-    assetSelect.disabled = false;
-    strategySelect.disabled = false;
-  }
-}
-
-
-async function loadMeanReversion() {
-  try {
-    setStatus("Running 34-asset strategy…");
-    strategySelect.disabled = true;
-    destroyCharts();
-    const response = await fetch(`${API_BASE}/portfolio/mean-reversion`);
-    if (!response.ok) throw new Error("Could not run mean reversion.");
-    const data = await response.json();
-
-    displayMeanReversionMetrics(data);
-    renderMeanAllocationChart(data);
-    renderMeanEquityChart(data);
-    renderMeanDrawdownChart(data);
-    renderAllocations(data);
-
-    document.getElementById("primary-chart-title").textContent =
-      `Latest allocations · ${data.latest_decision_date}`;
-    document.getElementById("equity-chart-title").textContent =
-      "Strategy vs no-cost scenario vs benchmark";
-    document.getElementById("drawdown-chart-title").textContent =
-      "Cost-adjusted portfolio drawdown";
-    document.getElementById("table-title").textContent = "Latest portfolio allocation";
-    assetDescription.textContent =
-      `${data.universe_size} assets · ${data.signal_days}-day loser signal · ` +
-      `${formatPercent(data.commission_percent)} commission · Starting capital: 1,000 EGP`;
-    insightBanner.textContent =
-      `Without commission, the portfolio finished at ${formatEGP(data.no_cost_final_value_egp)}. ` +
-      `After trading costs it finished at ${formatEGP(data.final_portfolio_value_egp)}, ` +
-      `a ${formatEGP(data.commission_drag_egp)} drag. High turnover—not just the signal—is the central insight.`;
-    setStatus("Mean reversion: ready", "ok");
-  } catch (error) {
-    console.error(error);
-    setStatus("Mean reversion failed", "error");
-  } finally {
-    strategySelect.disabled = false;
-  }
-}
-
-
-async function switchStrategy() {
-  const mode = strategySelect.value;
-  if (mode === "mean-reversion") {
-    assetControl.style.display = "none";
-    await loadMeanReversion();
-  } else {
-    assetControl.style.display = "flex";
-    await loadSmaAsset(assetSelect.value);
-  }
-}
-
-
-async function initializeDashboard() {
-  try {
-    setStatus("Loading assets…");
-    strategySelect.disabled = true;
-    assetSelect.disabled = true;
-    const [healthResponse, universeResponse] = await Promise.all([
-      fetch(`${API_BASE}/health`),
-      fetch(`${API_BASE}/universe`),
-    ]);
-    if (!healthResponse.ok || !universeResponse.ok) {
-      throw new Error("Could not connect to the backend.");
-    }
-    const health = await healthResponse.json();
-    const universe = await universeResponse.json();
-    if (health.status !== "ok" || !universe.assets?.length) {
-      throw new Error("No assets are available.");
-    }
-
-    assetSelect.innerHTML = "";
-    for (const symbol of universe.assets) {
-      const option = document.createElement("option");
-      option.value = symbol;
-      option.textContent = symbol;
-      assetSelect.appendChild(option);
-    }
-    assetSelect.value = universe.assets.includes("SAUD")
-      ? "SAUD"
-      : universe.assets[0];
-    assetSelect.disabled = false;
-    strategySelect.disabled = false;
-    await switchStrategy();
-  } catch (error) {
-    console.error(error);
-    setStatus("Backend not reachable", "error");
-    insightBanner.textContent = "Start the backend on port 8000, then refresh this page.";
-  }
-}
-
-
-strategySelect.addEventListener("change", switchStrategy);
-assetSelect.addEventListener("change", () => {
-  if (strategySelect.value === "sma") loadSmaAsset(assetSelect.value);
-});
-
-initializeDashboard();
-=======
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { labels: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
-      },
-      scales: {
-        x: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
-        y: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
-      },
-    },
-  });
-
-  state.charts.strategyMetrics = new Chart(els.strategyMetricsChart.getContext("2d"), {
-    type: "bar",
-    data: {
-      labels: ["Return %", "Max Drawdown %", "Trades"],
-      datasets: [
-        {
-          label: "MA Crossover",
-          data: [ma.return_percent, ma.max_drawdown_percent, ma.total_operations],
-          backgroundColor: "rgba(111,125,255,0.7)",
-        },
-        {
-          label: "Weekly Mean Reversion",
-          data: [weekly.return_percent, weekly.max_drawdown_percent, weekly.trade_count],
-          backgroundColor: "rgba(53,215,168,0.7)",
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
-        y: { ticks: { color: getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() } },
-      },
-    },
-  });
-}
-
-function resetForm() {
-  els.assetSelect.value = state.assets[0] || "";
-  els.initialCash.value = "1000";
-  els.fastWindow.value = "9";
-  els.slowWindow.value = "20";
-  els.tradeSearch.value = "";
-  els.tradeFilter.value = "ALL";
-  els.tradeSort.value = "newest";
-  state.results = null;
-  state.strategyPerformance = null;
-  els.resultsSection.hidden = true;
-  els.emptyState.hidden = false;
-  els.strategyPerformancePanel.hidden = true;
-  els.strategyComparisonChartPanel.hidden = true;
-  els.strategyMetricsChartPanel.hidden = true;
-  els.kpiRow.innerHTML = "";
-  destroyCharts();
-}
-
-function bindEvents() {
-  els.runBtn.addEventListener("click", runBacktest);
-  els.resetBtn.addEventListener("click", resetForm);
-  els.refreshBtn.addEventListener("click", async () => {
-    await checkHealth();
-    await loadAssets();
-  });
-  els.themeToggle.addEventListener("click", () => {
-    setTheme(state.theme === "dark" ? "light" : "dark");
-  });
-  els.tradeSearch.addEventListener("input", () => {
-    if (state.results) renderTrades(state.results);
-  });
-  els.tradeFilter.addEventListener("change", () => {
-    if (state.results) renderTrades(state.results);
-  });
-  els.tradeSort.addEventListener("change", () => {
-    if (state.results) renderTrades(state.results);
-  });
-  els.downloadBtn.addEventListener("click", () => {
-    if (!state.results) return;
-    const link = document.createElement("a");
-    link.download = `${state.results.symbol}-chart.png`;
-    link.href = document.getElementById("priceChart").toDataURL("image/png");
-    link.click();
-  });
-  els.fullscreenBtn.addEventListener("click", () => {
-    const chart = document.getElementById("priceChart");
-    if (chart.requestFullscreen) chart.requestFullscreen();
-  });
-  document.addEventListener("keydown", (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-      event.preventDefault();
-      runBacktest();
-    }
-  });
-}
-
-async function init() {
-  setTheme("dark");
-  bindEvents();
-  await checkHealth();
-  await loadAssets();
-  setLoading(false);
-  resetForm();
-}
-
-init();
-=======
+    const j = await fetchJSON(`${API}/health`);
     document.getElementById("status").textContent = "backend: " + j.status;
   } catch (e) {
     document.getElementById("status").textContent = "backend not reachable — start uvicorn";
   }
 }
-checkHealth();
-// TASK_02+ : fetch /prices and render a chart, etc.
->>>>>>> origin/main
->>>>>>> origin/Kanzy_Kabesh
+
+function destroy(name) {
+  if (charts[name]) { charts[name].destroy(); delete charts[name]; }
+}
+
+// `syncWith` names another entry in `charts` (by key) whose x-scale should
+// track this chart's zoom/pan, and vice versa — used to keep the price
+// chart and the indicator subplot moving together. The callback is baked
+// into the options at chart-CREATION time and resolves its target from the
+// live `charts` registry on every call, rather than being mutated onto
+// `chart.options` after construction — chartjs-plugin-zoom resolves these
+// handlers once at setup, so a post-hoc mutation is silently ignored.
+function zoomSyncHandler(syncWith) {
+  if (!syncWith) return undefined;
+  return ({ chart }) => {
+    const target = charts[syncWith];
+    if (!target || chart._zoomSyncGuard) return;
+    target._zoomSyncGuard = true;
+    target.zoomScale("x", { min: chart.scales.x.min, max: chart.scales.x.max }, "none");
+    target._zoomSyncGuard = false;
+  };
+}
+
+function gridOptions({ syncWith } = {}) {
+  const onComplete = zoomSyncHandler(syncWith);
+  return {
+    scales: {
+      x: { ticks: { color: COLOR.text, maxTicksLimit: 10 }, grid: { color: COLOR.grid } },
+      y: { ticks: { color: COLOR.text }, grid: { color: COLOR.grid } },
+    },
+    plugins: {
+      legend: { labels: { color: COLOR.text } },
+      tooltip: { mode: "index", intersect: false },
+      zoom: {
+        pan: { enabled: true, mode: "x", onPanComplete: onComplete },
+        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: "x", onZoomComplete: onComplete },
+      },
+    },
+    interaction: { mode: "index", intersect: false },
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+  };
+}
+
+function resetAllZoom() {
+  Object.values(charts).forEach((c) => { if (c.resetZoom) c.resetZoom(); });
+}
+
+function fieldLabel(f) {
+  return { close: "Close", open: "Open", high: "High", low: "Low" }[f] || f;
+}
+function pct(v, digits = 2) { return `${v >= 0 ? "+" : ""}${v.toFixed(digits)}%`; }
+function egp(v) { return v.toLocaleString(undefined, { maximumFractionDigits: 2 }); }
+
+// -------------------------------------------------------- indicator UI ----
+
+function currentIndicator() {
+  const key = document.getElementById("indicatorSelect").value;
+  return INDICATORS.find((i) => i.key === key);
+}
+
+function paramValue(name) {
+  const el = document.getElementById(`param_${name}`);
+  return el ? el.value : undefined;
+}
+
+function indicatorParamValues() {
+  const values = {};
+  currentIndicator().params.forEach((p) => { values[p.name] = paramValue(p.name); });
+  return values;
+}
+
+function buildIndicatorSelect() {
+  const select = document.getElementById("indicatorSelect");
+  select.innerHTML = INDICATORS.map((i) => `<option value="${i.key}">${i.label} (${i.kind})</option>`).join("");
+  select.value = DEFAULT_INDICATOR_KEY;
+  select.addEventListener("change", () => { renderIndicatorParamInputs(); runSimulation(); });
+  renderIndicatorParamInputs();
+}
+
+function renderIndicatorParamInputs() {
+  const ind = currentIndicator();
+  const container = document.getElementById("indicatorParams");
+  container.innerHTML = ind.params
+    .map((p) => `
+      <div class="param">
+        <label for="param_${p.name}">${p.label}</label>
+        <input type="number" id="param_${p.name}" value="${p.default}" step="${p.step}"/>
+      </div>`)
+    .join("");
+  container.querySelectorAll("input").forEach((el) => el.addEventListener("change", runSimulation));
+}
+
+// ---------------------------------------------------------------- init ----
+
+async function init() {
+  applyTheme(document.documentElement.getAttribute("data-theme") || "dark", { rerender: false });
+  document.getElementById("themeToggle").addEventListener("click", () => {
+    applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+  });
+
+  loadRunHistory();
+  await checkHealth();
+  buildIndicatorSelect();
+
+  state.symbols = await fetchJSON(`${API}/universe?${new URLSearchParams({ universe: state.universe })}`);
+
+  const select = document.getElementById("symbolSelect");
+  select.innerHTML = state.symbols.map((s) => `<option value="${s}">${s}</option>`).join("");
+  select.value = state.symbols.includes("COMI") ? "COMI" : state.symbols[0];
+
+  document.getElementById("compareInput").value = state.symbols.slice(0, 3).join(",");
+
+  const priceInfo = await fetchJSON(`${API}/prices/${select.value}?${new URLSearchParams({ universe: state.universe })}`);
+  document.getElementById("startDate").value = priceInfo.dates[0];
+  document.getElementById("endDate").value = priceInfo.dates[priceInfo.dates.length - 1];
+
+  document.getElementById("runButton").addEventListener("click", runSimulation);
+  document.getElementById("exportButton").addEventListener("click", exportCSV);
+  document.getElementById("compareButton").addEventListener("click", runComparison);
+  document.getElementById("fieldSelect").addEventListener("change", runSimulation);
+  document.getElementById("resetZoomButton").addEventListener("click", resetAllZoom);
+  document.getElementById("clearHistoryButton").addEventListener("click", clearRunHistory);
+  document.getElementById("runHistoryBody").addEventListener("click", (e) => {
+    if (e.target.matches(".delete-run")) deleteRun(Number(e.target.dataset.id));
+  });
+  document.getElementById("universeToggle").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-universe]");
+    if (!btn || btn.classList.contains("active")) return;
+    applyUniverse(btn.dataset.universe);
+  });
+  ["toggleMaFast", "toggleMaSlow"].forEach((id) =>
+    document.getElementById(id).addEventListener("change", () => {
+      renderPriceChart(state.latestBacktest, state.latestIndicators);
+    })
+  );
+
+  await runSimulation();
+  await runBaselineEquity();
+  await runStrategyComparison();
+  await runComparison();
+
+  initTabs();
+}
+
+// ----------------------------------------------------------------- tabs ----
+// Simulator's data loads eagerly above (it's the default tab); the other
+// three tabs load lazily, the first time you switch to them, so opening the
+// dashboard doesn't pay for four tabs' worth of fetches up front.
+function initTabs() {
+  document.getElementById("tabBar").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-tab]");
+    if (!btn) return;
+    const tab = btn.dataset.tab;
+    document.querySelectorAll("#tabBar button").forEach((b) => b.classList.toggle("active", b === btn));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
+
+    if (tab === "models" && !state.modelsInitialized) { state.modelsInitialized = true; initModelComparison(); }
+    if (tab === "strategies" && !state.strategiesInitialized) { state.strategiesInitialized = true; initStrategiesTab(); }
+    if (tab === "performance" && !state.performanceInitialized) { state.performanceInitialized = true; loadPerformanceResults(); }
+  });
+}
+
+// TASK_05 universe toggle: switching re-fetches /universe (so the symbol
+// dropdown reflects the new list), then re-runs every panel that depends on
+// a universe-scoped endpoint — the single-asset simulator (whose valid
+// symbols come from the selected universe), the Notebook 4 baseline equity
+// curve, the strategy comparison, and the asset-comparison panel.
+async function applyUniverse(newUniverse) {
+  state.universe = newUniverse;
+  document.querySelectorAll("#universeToggle button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.universe === newUniverse);
+  });
+
+  const previousSymbol = document.getElementById("symbolSelect").value;
+  state.symbols = await fetchJSON(`${API}/universe?${new URLSearchParams({ universe: newUniverse })}`);
+
+  const select = document.getElementById("symbolSelect");
+  select.innerHTML = state.symbols.map((s) => `<option value="${s}">${s}</option>`).join("");
+  select.value = state.symbols.includes(previousSymbol)
+    ? previousSymbol
+    : (state.symbols.includes("COMI") ? "COMI" : state.symbols[0]);
+
+  document.getElementById("compareInput").value = state.symbols.slice(0, 3).join(",");
+
+  await runSimulation();
+  await runBaselineEquity();
+  await runStrategyComparison();
+  await runComparison();
+}
+
+function rerenderAll() {
+  if (state.latestBacktest) {
+    renderKPIs(state.latestBacktest.kpis);
+    renderAlert(state.latestBacktest.alert, document.getElementById("fastInput").value, document.getElementById("slowInput").value);
+    renderPriceChart(state.latestBacktest, state.latestIndicators);
+    renderIndicatorPanel(state.latestIndicators);
+    renderSingleAssetEquityChart(state.latestBacktest);
+    renderTradeFeed(state.latestBacktest.buy_signals, state.latestBacktest.sell_signals);
+  }
+  if (state.latestBaseline) drawBaselineEquityChart(state.latestBaseline);
+  if (state.latestStrategyComparison) {
+    drawStrategyComparisonChart(state.latestStrategyComparison);
+    renderStrategyMetrics(state.latestStrategyComparison);
+  }
+  if (state.latestForecast) drawForecastChart(state.latestForecast);
+  if (state.latestCompareSymbols) drawCompareCharts();
+  renderRunHistory();
+}
+
+// ------------------------------------------------------------ simulator ----
+
+async function runSimulation() {
+  const symbol = document.getElementById("symbolSelect").value;
+  const field = document.getElementById("fieldSelect").value;
+  const start = document.getElementById("startDate").value;
+  const end = document.getElementById("endDate").value;
+  const fast = document.getElementById("fastInput").value;
+  const slow = document.getElementById("slowInput").value;
+  const capital = document.getElementById("capitalInput").value;
+  const indicator = currentIndicator();
+  const indicatorParams = indicatorParamValues();
+
+  const btParams = new URLSearchParams({ symbol, universe: state.universe, field, fast, slow, capital, start, end });
+  const indParams = new URLSearchParams({ universe: state.universe, field, start, end, ...indicatorParams });
+  const [backtest, indicators] = await Promise.all([
+    fetchJSON(`${API}/backtest/single?${btParams}`),
+    fetchJSON(`${API}/indicators/${symbol}?${indParams}`),
+  ]);
+
+  state.latestBacktest = backtest;
+  state.latestIndicators = indicators;
+  state.latestSymbol = symbol;
+
+  renderFieldNote(field, backtest.field);
+  renderKPIs(backtest.kpis);
+  renderAlert(backtest.alert, fast, slow);
+  renderPriceChart(backtest, indicators);
+  renderIndicatorPanel(indicators);
+  renderSingleAssetEquityChart(backtest);
+  renderTradeFeed(backtest.buy_signals, backtest.sell_signals);
+  await renderForecast(symbol, field);
+
+  recordRun({ symbol, field: backtest.field, fast, slow, indicator, indicatorParams, kpis: backtest.kpis });
+}
+
+function renderFieldNote(requestedField, resolvedField) {
+  const note = document.getElementById("fieldNote");
+  if (requestedField === "adj_close" && resolvedField === "close") {
+    note.textContent = "No adjusted-close data available for this asset — using Close instead.";
+    note.style.display = "block";
+  } else {
+    note.style.display = "none";
+  }
+}
+
+function renderKPIs(k) {
+  const cards = [
+    { label: "Current price", value: `${k.current_price.toFixed(2)} EGP`, sub: pct(k.daily_change_pct) + " today", cls: k.daily_change_pct >= 0 ? "good" : "critical" },
+    { label: "Portfolio value", value: `${egp(k.final_value)} EGP`, sub: `Buy & hold: ${egp(k.buy_and_hold_final_value)} EGP` },
+    { label: "Total return", value: pct(k.total_return_pct), cls: k.total_return_pct >= 0 ? "good" : "critical" },
+    { label: "Max drawdown", value: `-${k.max_drawdown_pct.toFixed(2)}%`, cls: "critical" },
+    { label: "Win rate", value: `${k.win_rate_pct.toFixed(1)}%`, sub: `${k.num_sells} closed trades` },
+    { label: "Buy / sell ops", value: `${k.num_buys} / ${k.num_sells}` },
+    { label: "Sharpe ratio", value: k.sharpe.toFixed(2) },
+    { label: "Avg holding period", value: `${k.avg_holding_days.toFixed(1)} days` },
+    { label: "Volatility (ann.)", value: `${k.volatility_pct.toFixed(1)}%` },
+    { label: "Expected return (ann.)", value: pct(k.expected_return_pct), cls: k.expected_return_pct >= 0 ? "good" : "critical" },
+  ];
+
+  document.getElementById("kpiGrid").innerHTML = cards
+    .map((c) => `
+      <div class="kpi-card">
+        <div class="label">${c.label}</div>
+        <div class="value ${c.cls || ""}">${c.value}</div>
+        ${c.sub ? `<div class="sub">${c.sub}</div>` : ""}
+      </div>`)
+    .join("");
+}
+
+function renderAlert(alert, fast, slow) {
+  const banner = document.getElementById("alertBanner");
+  if (!alert || !alert.active) { banner.style.display = "none"; return; }
+  const word = alert.direction === "golden" ? "golden cross (buy)" : "death cross (sell)";
+  document.getElementById("alertText").textContent =
+    `MA${fast} and MA${slow} are converging — a ${word} may be imminent (~${alert.distance_pct.toFixed(2)}% apart).`;
+  banner.style.display = "flex";
+}
+
+function overlayDatasetsFor(indicator, ind) {
+  switch (indicator.key) {
+    case "sma":
+      return [{ label: `SMA(${paramValue("sma_window")})`, data: ind.sma, borderColor: COLOR.yellow, borderWidth: 1.5, pointRadius: 0, order: 3 }];
+    case "ema":
+      return [{ label: `EMA(${paramValue("ema_window")})`, data: ind.ema, borderColor: COLOR.magenta, borderWidth: 1.5, pointRadius: 0, order: 3 }];
+    case "bb":
+      return [
+        { label: "BB upper", data: ind.bb_upper, borderColor: COLOR.violet, borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false, order: 2 },
+        { label: "BB lower", data: ind.bb_lower, borderColor: COLOR.violet, borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: "-1", backgroundColor: "rgba(144,133,233,0.10)", order: 2 },
+      ];
+    case "vwap":
+      return [{ label: `VWAP(${paramValue("vwap_window")})`, data: ind.vwap, borderColor: COLOR.green, borderWidth: 1.5, borderDash: [2, 2], pointRadius: 0, order: 3 }];
+    case "ichimoku":
+      return [
+        { label: "Tenkan-sen", data: ind.ichimoku_tenkan, borderColor: COLOR.red, borderWidth: 1, pointRadius: 0, order: 3 },
+        { label: "Kijun-sen", data: ind.ichimoku_kijun, borderColor: COLOR.green, borderWidth: 1, pointRadius: 0, order: 3 },
+        { label: "Senkou A", data: ind.ichimoku_senkou_a, borderColor: "rgba(144,133,233,0.5)", borderWidth: 1, pointRadius: 0, fill: false, order: 2 },
+        { label: "Senkou B (cloud)", data: ind.ichimoku_senkou_b, borderColor: "rgba(144,133,233,0.5)", borderWidth: 1, pointRadius: 0, fill: "-1", backgroundColor: "rgba(144,133,233,0.12)", order: 2 },
+      ];
+    case "psar":
+      return [{ label: "Parabolic SAR", data: ind.psar, showLine: false, pointStyle: "circle", pointRadius: 2.5, pointBackgroundColor: COLOR.magenta, pointBorderColor: COLOR.magenta, order: 1 }];
+    default:
+      return [];
+  }
+}
+
+function renderPriceChart(bt, ind) {
+  if (!bt) return;
+  destroy("price");
+
+  const datasets = [
+    { label: `Price (${fieldLabel(bt.field)})`, data: bt.close, borderColor: COLOR.blue, borderWidth: 2, pointRadius: 0, order: 5 },
+  ];
+
+  if (document.getElementById("toggleMaFast").checked) {
+    datasets.push({ label: "MA fast (strategy)", data: bt.ma_fast, borderColor: COLOR.orange, borderWidth: 1.5, pointRadius: 0, order: 4 });
+  }
+  if (document.getElementById("toggleMaSlow").checked) {
+    datasets.push({ label: "MA slow (strategy)", data: bt.ma_slow, borderColor: COLOR.aqua, borderWidth: 1.5, pointRadius: 0, order: 4 });
+  }
+
+  const active = currentIndicator();
+  if (ind && active && active.kind === "overlay") {
+    datasets.push(...overlayDatasetsFor(active, ind));
+  }
+
+  const buyDates = new Set(bt.buy_signals.map((s) => s.date));
+  const sellDates = new Set(bt.sell_signals.map((s) => s.date));
+  const buyData = bt.dates.map((d, i) => (buyDates.has(d) ? bt.close[i] : null));
+  const sellData = bt.dates.map((d, i) => (sellDates.has(d) ? bt.close[i] : null));
+  datasets.push({ label: "Buy", data: buyData, showLine: false, pointStyle: "triangle", pointRadius: 7, pointBackgroundColor: COLOR.good, pointBorderColor: COLOR.good, order: 1 });
+  datasets.push({ label: "Sell", data: sellData, showLine: false, pointStyle: "triangle", pointRotation: 180, pointRadius: 7, pointBackgroundColor: COLOR.critical, pointBorderColor: COLOR.critical, order: 1 });
+
+  charts.price = new Chart(document.getElementById("priceChart"), {
+    type: "line",
+    data: { labels: bt.dates, datasets },
+    options: gridOptions({ syncWith: "indicatorPanel" }),
+  });
+}
+
+function renderSingleAssetEquityChart(bt) {
+  if (!bt) return;
+  destroy("singleAssetEquity");
+  charts.singleAssetEquity = new Chart(document.getElementById("singleAssetEquityChart"), {
+    type: "line",
+    data: {
+      labels: bt.dates,
+      datasets: [
+        { label: "MA crossover strategy", data: bt.portfolio_value, borderColor: COLOR.blue, borderWidth: 2, pointRadius: 0 },
+        { label: "Buy & hold", data: bt.buy_and_hold_value, borderColor: COLOR.orange, borderWidth: 2, pointRadius: 0 },
+      ],
+    },
+    options: gridOptions(),
+  });
+}
+
+// ----------------------------------------------- Notebook 4 baseline (TASK_05) ----
+
+async function runBaselineEquity() {
+  const bt = await fetchJSON(`${API}/backtest?${new URLSearchParams({ universe: state.universe, strategy: "sma" })}`);
+  state.latestBaseline = bt;
+  drawBaselineEquityChart(bt);
+}
+
+function drawBaselineEquityChart(bt) {
+  destroy("equity");
+  charts.equity = new Chart(document.getElementById("equityChart"), {
+    type: "line",
+    data: {
+      labels: bt.dates,
+      datasets: [
+        { label: bt.strategy_label, data: bt.portfolio, borderColor: COLOR.blue, borderWidth: 2, pointRadius: 0 },
+        { label: "Benchmark (equal-weight)", data: bt.benchmark, borderColor: COLOR.orange, borderWidth: 2, pointRadius: 0 },
+      ],
+    },
+    options: gridOptions(),
+  });
+  document.getElementById("baselineUniverseNote").textContent =
+    `Universe: ${state.universe === "small" ? "Small (6 stocks)" : `Full (${state.symbols.length} stocks)`}. Both lines start at 1.0.`;
+}
+
+// ------------------------------------------- strategy comparison (TASK_05) ----
+
+// Notebook 4 baseline (SMA), MPT, HFT mean-reversion, and LSTM (trained in
+// lstm.ipynb, loaded by main.py if models/lstm_dashboard.pt exists) — all
+// four share the same /backtest + /metrics shape (see main.py), so the
+// comparison section iterates this list instead of hardcoding entries.
+// Colors are looked up from COLOR (a color KEY, not a resolved hex) at draw
+// time, not baked in here — this array is built once at module-load, before
+// applyTheme() has run, when COLOR is still {}.
+const COMPARISON_STRATEGIES = [
+  { key: "sma", colorKey: "blue" },
+  { key: "mpt", colorKey: "violet" },
+  { key: "hft_mean_reversion", colorKey: "magenta" },
+  { key: "lstm", colorKey: "aqua" },
+];
+
+async function runStrategyComparison() {
+  const common = { universe: state.universe };
+  const results = await Promise.all(
+    COMPARISON_STRATEGIES.map(({ key }) =>
+      Promise.all([
+        fetchJSON(`${API}/backtest?${new URLSearchParams({ ...common, strategy: key })}`),
+        fetchJSON(`${API}/metrics?${new URLSearchParams({ ...common, strategy: key })}`),
+      ])
+    )
+  );
+  state.latestStrategyComparison = COMPARISON_STRATEGIES.map(({ key, colorKey }, i) => ({
+    key, colorKey, bt: results[i][0], metrics: results[i][1],
+  }));
+  drawStrategyComparisonChart(state.latestStrategyComparison);
+  renderStrategyMetrics(state.latestStrategyComparison);
+}
+
+function drawStrategyComparisonChart(strategies) {
+  destroy("strategyComparison");
+  const datasets = strategies.map((s) => ({
+    label: s.bt.strategy_label, data: s.bt.portfolio, borderColor: COLOR[s.colorKey], borderWidth: 2, pointRadius: 0,
+  }));
+  datasets.push({
+    label: "Benchmark (equal-weight)", data: strategies[0].bt.benchmark,
+    borderColor: COLOR.orange, borderWidth: 2, borderDash: [4, 3], pointRadius: 0,
+  });
+  // Log scale: HFT's tiny fixed-notional trades keep it near 1.0x while SMA/MPT
+  // can run into the tens-of-x — on a linear axis HFT and the benchmark
+  // flatten into an indistinguishable line at the bottom. Still one axis
+  // (not a dual-axis chart), just log-scaled so all three stay readable.
+  const options = gridOptions();
+  charts.strategyComparison = new Chart(document.getElementById("strategyComparisonChart"), {
+    type: "line",
+    data: { labels: strategies[0].bt.dates, datasets },
+    options: { ...options, scales: { ...options.scales, y: { ...options.scales.y, type: "logarithmic" } } },
+  });
+}
+
+function renderStrategyMetrics(strategies) {
+  document.getElementById("strategyMetricsGrid").innerHTML = strategies
+    .map(({ metrics: m }) => {
+      // Only the HFT strategy has discrete trades to win/lose — SMA and MPT
+      // rebalance continuous weights daily and never "close a trade". And by
+      // construction HFT's exit only fires at/above the pre-drop reference
+      // price, so every CLOSED trade wins; the real risk is entirely in
+      // positions still open (see the disclaimer above the chart).
+      const tradeInfo = m.win_rate_pct === undefined ? "" :
+        `<div class="sub">${m.win_rate_pct.toFixed(0)}% of ${m.num_trades_closed} closed trades won · ${m.num_positions_open_at_end} still open, unrecovered</div>`;
+      return `
+      <div class="kpi-card">
+        <div class="label">${m.strategy_label}</div>
+        <div class="value ${m.total_return >= 0 ? "good" : "critical"}">${pct(m.total_return * 100)}</div>
+        <div class="sub">Sharpe ${m.sharpe.toFixed(2)} · Max drawdown -${(m.max_drawdown * 100).toFixed(1)}%</div>
+        ${tradeInfo}
+      </div>`;
+    })
+    .join("");
+}
+
+// ------------------------------------------------------- indicator panel ----
+
+function oscillatorChartConfig(key, ind) {
+  const options = gridOptions({ syncWith: "price" });
+  const flat = (value) => ind.dates.map(() => value);
+  switch (key) {
+    case "rsi":
+      return {
+        datasets: [
+          { label: `RSI(${paramValue("rsi_window")})`, data: ind.rsi, borderColor: COLOR.yellow, borderWidth: 1.5, pointRadius: 0 },
+          { label: "Overbought", data: flat(70), borderColor: COLOR.critical, borderWidth: 1, borderDash: [3, 3], pointRadius: 0 },
+          { label: "Oversold", data: flat(30), borderColor: COLOR.good, borderWidth: 1, borderDash: [3, 3], pointRadius: 0 },
+        ],
+        options: { ...options, scales: { ...options.scales, y: { ...options.scales.y, min: 0, max: 100 } } },
+      };
+    case "macd":
+      return {
+        datasets: [
+          { label: "MACD", data: ind.macd_line, borderColor: COLOR.blue, borderWidth: 1.5, pointRadius: 0 },
+          { label: "Signal", data: ind.macd_signal, borderColor: COLOR.orange, borderWidth: 1.5, pointRadius: 0 },
+        ],
+        options,
+      };
+    case "stoch":
+      return {
+        datasets: [
+          { label: "%K", data: ind.stoch_k, borderColor: COLOR.aqua, borderWidth: 1.5, pointRadius: 0 },
+          { label: "%D", data: ind.stoch_d, borderColor: COLOR.orange, borderWidth: 1.5, pointRadius: 0 },
+          { label: "Overbought", data: flat(80), borderColor: COLOR.critical, borderWidth: 1, borderDash: [3, 3], pointRadius: 0 },
+          { label: "Oversold", data: flat(20), borderColor: COLOR.good, borderWidth: 1, borderDash: [3, 3], pointRadius: 0 },
+        ],
+        options: { ...options, scales: { ...options.scales, y: { ...options.scales.y, min: 0, max: 100 } } },
+      };
+    case "atr":
+      return { datasets: [{ label: `ATR(${paramValue("atr_window")})`, data: ind.atr, borderColor: COLOR.orange, borderWidth: 1.5, pointRadius: 0 }], options };
+    case "adx":
+      return {
+        datasets: [
+          { label: "ADX", data: ind.adx, borderColor: COLOR.violet, borderWidth: 1.5, pointRadius: 0 },
+          { label: "+DI", data: ind.plus_di, borderColor: COLOR.good, borderWidth: 1, pointRadius: 0 },
+          { label: "-DI", data: ind.minus_di, borderColor: COLOR.critical, borderWidth: 1, pointRadius: 0 },
+        ],
+        options,
+      };
+    case "obv":
+      return { datasets: [{ label: "OBV", data: ind.obv, borderColor: COLOR.green, borderWidth: 1.5, pointRadius: 0 }], options };
+    default:
+      return null;
+  }
+}
+
+function renderIndicatorPanel(ind) {
+  const wrap = document.getElementById("indicatorPanelWrap");
+  destroy("indicatorPanel");
+
+  const active = currentIndicator();
+  if (!ind || !active || active.kind !== "oscillator") {
+    wrap.style.display = "none";
+    return;
+  }
+  wrap.style.display = "block";
+  document.getElementById("indicatorPanelTitle").textContent = active.label;
+
+  const cfg = oscillatorChartConfig(active.key, ind);
+  charts.indicatorPanel = new Chart(document.getElementById("indicatorPanelChart"), {
+    type: "line",
+    data: { labels: ind.dates, datasets: cfg.datasets },
+    options: cfg.options,
+  });
+}
+
+function renderTradeFeed(buySignals, sellSignals) {
+  const rows = [
+    ...buySignals.map((s) => ({ ...s, action: "buy" })),
+    ...sellSignals.map((s) => ({ ...s, action: "sell" })),
+  ].sort((a, b) => (a.date < b.date ? 1 : -1)); // most recent first
+
+  document.getElementById("tradeFeedBody").innerHTML = rows
+    .map((r) => `
+      <tr>
+        <td>${r.date}</td>
+        <td class="action-${r.action}">${r.action.toUpperCase()}</td>
+        <td>${r.price.toFixed(2)}</td>
+        <td>${egp(r.portfolio_value)}</td>
+      </tr>`)
+    .join("") || `<tr><td colspan="4" class="empty-note">No trades in this window.</td></tr>`;
+}
+
+function exportCSV() {
+  const bt = state.latestBacktest;
+  if (!bt) return;
+
+  const lines = ["metric,value"];
+  Object.entries(bt.kpis).forEach(([k, v]) => lines.push(`${k},${v}`));
+  lines.push("");
+  lines.push("buy_date,buy_price,sell_date,sell_price,holding_days,return_pct,win,open");
+  bt.trades.forEach((t) =>
+    lines.push([t.buy_date, t.buy_price, t.sell_date ?? "", t.sell_price ?? "", t.holding_days, t.return_pct, t.win, t.open].join(","))
+  );
+
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `backtest_${state.latestSymbol}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ----------------------------------------------------------- run history ----
+
+const RUN_HISTORY_KEY = "dashboard-run-history";
+
+function loadRunHistory() {
+  try {
+    state.runHistory = JSON.parse(localStorage.getItem(RUN_HISTORY_KEY) || "[]");
+  } catch (e) {
+    state.runHistory = [];
+  }
+  renderRunHistory();
+}
+
+function saveRunHistory() {
+  localStorage.setItem(RUN_HISTORY_KEY, JSON.stringify(state.runHistory.slice(0, 100)));
+}
+
+function recordRun({ symbol, field, fast, slow, indicator, indicatorParams, kpis }) {
+  const paramsSummary = indicator.params.map((p) => `${p.label}=${indicatorParams[p.name]}`).join(", ") || "—";
+  state.runHistory.unshift({
+    id: Date.now(),
+    time: new Date().toLocaleString(),
+    symbol, field, fast, slow,
+    indicatorLabel: indicator.label,
+    paramsSummary,
+    final_value: kpis.final_value,
+    total_return_pct: kpis.total_return_pct,
+    max_drawdown_pct: kpis.max_drawdown_pct,
+    win_rate_pct: kpis.win_rate_pct,
+    sharpe: kpis.sharpe,
+  });
+  saveRunHistory();
+  renderRunHistory();
+}
+
+function deleteRun(id) {
+  state.runHistory = state.runHistory.filter((r) => r.id !== id);
+  saveRunHistory();
+  renderRunHistory();
+}
+
+function clearRunHistory() {
+  state.runHistory = [];
+  saveRunHistory();
+  renderRunHistory();
+}
+
+function renderRunHistory() {
+  const body = document.getElementById("runHistoryBody");
+  if (!body) return;
+  body.innerHTML = state.runHistory
+    .map((r) => `
+      <tr>
+        <td>${r.time}</td>
+        <td>${r.symbol}</td>
+        <td>${fieldLabel(r.field)}</td>
+        <td>${r.indicatorLabel}<br/><span style="color:var(--text-muted);font-size:0.75rem">${r.paramsSummary}</span></td>
+        <td>${r.fast}/${r.slow}</td>
+        <td>${egp(r.final_value)} EGP</td>
+        <td class="${r.total_return_pct >= 0 ? "action-buy" : "action-sell"}">${pct(r.total_return_pct)}</td>
+        <td>-${r.max_drawdown_pct.toFixed(2)}%</td>
+        <td>${r.win_rate_pct.toFixed(1)}%</td>
+        <td>${r.sharpe.toFixed(2)}</td>
+        <td><button class="delete-run" data-id="${r.id}" title="Delete this run">✕</button></td>
+      </tr>`)
+    .join("") || `<tr><td colspan="11" class="empty-note">No runs yet — click "Run simulator" above.</td></tr>`;
+}
+
+// -------------------------------------------------------------- forecast ----
+
+async function renderForecast(symbol, field) {
+  const fc = await fetchJSON(`${API}/forecast/${symbol}?${new URLSearchParams({ universe: state.universe, field, years: 3 })}`);
+  state.latestForecast = fc;
+  drawForecastChart(fc);
+}
+
+function drawForecastChart(fc) {
+  destroy("forecast");
+
+  const histDates = fc.history.dates.slice(-500);
+  const histClose = fc.history.close.slice(-500);
+  const labels = [...histDates, ...fc.forecast.dates];
+  const pad = (arr) => new Array(histDates.length - 1).fill(null).concat(arr);
+
+  charts.forecast = new Chart(document.getElementById("forecastChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: `History (${fieldLabel(fc.field)})`, data: [...histClose, ...new Array(fc.forecast.dates.length).fill(null)], borderColor: COLOR.blue, borderWidth: 2, pointRadius: 0 },
+        { label: "Projected (median)", data: pad([histClose[histClose.length - 1], ...fc.forecast.median]), borderColor: COLOR.orange, borderDash: [6, 4], borderWidth: 2, pointRadius: 0 },
+        { label: "Upper (80% band)", data: pad([histClose[histClose.length - 1], ...fc.forecast.upper]), borderColor: "rgba(144,133,233,0.4)", borderWidth: 1, pointRadius: 0, fill: false },
+        { label: "Lower (80% band)", data: pad([histClose[histClose.length - 1], ...fc.forecast.lower]), borderColor: "rgba(144,133,233,0.4)", borderWidth: 1, pointRadius: 0, fill: "-1", backgroundColor: "rgba(144,133,233,0.12)" },
+      ],
+    },
+    options: gridOptions(),
+  });
+
+  document.getElementById("forecastDisclaimer").textContent =
+    `${fc.disclaimer} Fitted drift ${pct(fc.annualized_drift_pct)}/yr, volatility ${fc.annualized_volatility_pct.toFixed(1)}%/yr, ${(fc.confidence * 100).toFixed(0)}% band shown.`;
+}
+
+// --------------------------------------------------------- comparison ----
+
+async function runComparison() {
+  const symbols = document
+    .getElementById("compareInput")
+    .value.split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter((s) => state.symbols.includes(s))
+    .slice(0, 3);
+  if (symbols.length === 0) return;
+
+  const priceSeries = await Promise.all(
+    symbols.map((s) => fetchJSON(`${API}/prices/${s}?${new URLSearchParams({ universe: state.universe })}`))
+  );
+  const riskReward = await Promise.all(
+    symbols.map((s) =>
+      fetchJSON(`${API}/backtest/single?${new URLSearchParams({ symbol: s, universe: state.universe, fast: 9, slow: 20, capital: 1000 })}`)
+    )
+  );
+
+  state.latestCompareSymbols = symbols;
+  state.latestComparePrices = priceSeries;
+  state.latestCompareRiskReward = riskReward;
+  drawCompareCharts();
+}
+
+function drawCompareCharts() {
+  const symbols = state.latestCompareSymbols;
+  const priceSeries = state.latestComparePrices;
+  const riskReward = state.latestCompareRiskReward;
+  const colors = [COLOR.blue, COLOR.orange, COLOR.aqua];
+
+  // Symbols can have different trading calendars (different listing dates,
+  // holidays) — plotting each against a shared label array by index would
+  // silently misalign dates. Intersect the calendars first, same approach
+  // DataFeed.from_dir uses server-side for the multi-asset universe.
+  const dateSets = priceSeries.map((p) => new Set(p.dates));
+  const commonDates = priceSeries[0].dates.filter((d) => dateSets.every((s) => s.has(d))).sort();
+
+  destroy("compare");
+  charts.compare = new Chart(document.getElementById("compareChart"), {
+    type: "line",
+    data: {
+      labels: commonDates,
+      datasets: priceSeries.map((p, i) => {
+        const closeByDate = new Map(p.dates.map((d, idx) => [d, p.close[idx]]));
+        const base = closeByDate.get(commonDates[0]);
+        return {
+          label: symbols[i],
+          data: commonDates.map((d) => (closeByDate.get(d) / base - 1) * 100),
+          borderColor: colors[i],
+          borderWidth: 2,
+          pointRadius: 0,
+        };
+      }),
+    },
+    options: gridOptions(),
+  });
+
+  destroy("riskReward");
+  const options = gridOptions();
+  charts.riskReward = new Chart(document.getElementById("riskRewardChart"), {
+    type: "scatter",
+    data: {
+      datasets: riskReward.map((r, i) => ({
+        label: symbols[i],
+        data: [{ x: r.kpis.volatility_pct, y: r.kpis.expected_return_pct }],
+        backgroundColor: colors[i],
+        pointRadius: 8,
+      })),
+    },
+    options: {
+      ...options,
+      scales: {
+        x: { ...options.scales.x, type: "linear", title: { display: true, text: "Volatility % (annualized)", color: COLOR.text } },
+        y: { ...options.scales.y, type: "linear", title: { display: true, text: "Expected return % (annualized)", color: COLOR.text } },
+      },
+      interaction: { mode: "point" },
+    },
+  });
+}
+
+// ======================================================= model comparison ==
+
+async function initModelComparison() {
+  state.models = await fetchJSON(`${API}/models`);
+
+  const modelSelect = document.getElementById("modelSelect");
+  modelSelect.innerHTML = state.models.map((m) => `<option value="${m.key}">${m.label}</option>`).join("");
+  modelSelect.addEventListener("change", () => { populateModelSymbols(); runModelComparison(); });
+
+  document.getElementById("modelSymbolSelect").addEventListener("change", runModelComparison);
+  document.getElementById("runModelButton").addEventListener("click", runModelComparison);
+
+  populateModelSymbols();
+  await runModelComparison();
+}
+
+function populateModelSymbols() {
+  const modelKey = document.getElementById("modelSelect").value;
+  const model = state.models.find((m) => m.key === modelKey);
+  const select = document.getElementById("modelSymbolSelect");
+  const previous = select.value;
+  select.innerHTML = model.symbols.map((s) => `<option value="${s}">${s}</option>`).join("");
+  select.value = model.symbols.includes(previous) ? previous : (model.symbols.includes("COMI") ? "COMI" : model.symbols[0]);
+}
+
+async function runModelComparison() {
+  const modelKey = document.getElementById("modelSelect").value;
+  const symbol = document.getElementById("modelSymbolSelect").value;
+  const capital = document.getElementById("modelCapitalInput").value;
+
+  const data = await fetchJSON(`${API}/models/${modelKey}/${symbol}?${new URLSearchParams({ capital })}`);
+  state.latestModelComparison = data;
+
+  document.getElementById("modelNote").textContent =
+    `${data.model_label} on ${symbol} — trained/validated on this stock's own full history. ` +
+    `Train: ${data.dates_train[0]} to ${data.dates_train[data.dates_train.length - 1]}. ` +
+    `Test (held out, out-of-sample): ${data.dates_test[0]} to ${data.dates_test[data.dates_test.length - 1]}.`;
+  document.getElementById("modelLowLiquidityBanner").style.display = data.metrics.low_liquidity ? "flex" : "none";
+
+  renderModelMetrics(data);
+  renderModelLossChart(data);
+  renderModelPredVsActual(data);
+  renderModelImpact(data);
+}
+
+function renderModelMetrics(data) {
+  const m = data.metrics;
+  const cards = [
+    { label: "RMSE", value: m.rmse.toFixed(6) },
+    { label: "MAE", value: m.mae.toFixed(6) },
+    { label: "MAPE", value: m.mape === null ? "n/a" : `${m.mape.toFixed(1)}%`, sub: "unstable near-zero returns -- see note" },
+    { label: "Directional accuracy", value: `${m.directional_accuracy_pct.toFixed(1)}%`, cls: m.directional_accuracy_pct >= 50 ? "good" : "critical", sub: "coin flip = 50.0%" },
+  ];
+  document.getElementById("modelMetricsGrid").innerHTML = cards
+    .map((c) => `
+      <div class="kpi-card">
+        <div class="label">${c.label}</div>
+        <div class="value ${c.cls || ""}">${c.value}</div>
+        ${c.sub ? `<div class="sub">${c.sub}</div>` : ""}
+      </div>`)
+    .join("");
+}
+
+function renderModelLossChart(data) {
+  destroy("modelLoss");
+  const opts = gridOptions();
+  charts.modelLoss = new Chart(document.getElementById("modelLossChart"), {
+    type: "line",
+    data: {
+      labels: (data.train_loss_history || []).map((_, i) => i),
+      datasets: [
+        { label: "train", data: data.train_loss_history, borderColor: COLOR.blue, borderWidth: 1.5, pointRadius: 0 },
+        { label: "test", data: data.test_loss_history, borderColor: COLOR.orange, borderWidth: 1.5, pointRadius: 0 },
+      ],
+    },
+    options: {
+      ...opts,
+      scales: {
+        x: { ...opts.scales.x, title: { display: true, text: "epoch", color: COLOR.text } },
+        y: { ...opts.scales.y, type: "logarithmic", title: { display: true, text: "MSE loss", color: COLOR.text } },
+      },
+    },
+  });
+}
+
+function renderModelPredVsActual(data) {
+  const opts = gridOptions();
+  const window_ = 150;
+
+  destroy("modelTrain");
+  charts.modelTrain = new Chart(document.getElementById("modelTrainChart"), {
+    type: "line",
+    data: {
+      labels: data.dates_train.slice(0, window_),
+      datasets: [
+        { label: "actual", data: data.y_train.slice(0, window_), borderColor: COLOR.blue, borderWidth: 1.5, pointRadius: 0 },
+        { label: "predicted", data: data.train_preds.slice(0, window_), borderColor: COLOR.orange, borderWidth: 1.5, pointRadius: 0 },
+      ],
+    },
+    options: { ...opts, plugins: { ...opts.plugins, title: { display: true, text: "Train period", color: COLOR.text } } },
+  });
+
+  destroy("modelTest");
+  charts.modelTest = new Chart(document.getElementById("modelTestChart"), {
+    type: "line",
+    data: {
+      labels: data.dates_test.slice(0, window_),
+      datasets: [
+        { label: "actual", data: data.y_test.slice(0, window_), borderColor: COLOR.blue, borderWidth: 1.5, pointRadius: 0 },
+        { label: "predicted", data: data.test_preds.slice(0, window_), borderColor: COLOR.orange, borderWidth: 1.5, pointRadius: 0 },
+      ],
+    },
+    options: { ...opts, plugins: { ...opts.plugins, title: { display: true, text: "Test period (out-of-sample)", color: COLOR.text } } },
+  });
+}
+
+function renderModelImpact(data) {
+  destroy("modelImpact");
+  charts.modelImpact = new Chart(document.getElementById("modelImpactChart"), {
+    type: "line",
+    data: {
+      labels: data.dates_test,
+      datasets: [
+        { label: `Following ${data.model_label}'s calls`, data: data.portfolio_value, borderColor: COLOR.blue, borderWidth: 2, pointRadius: 0 },
+        { label: "Buy & hold", data: data.buy_and_hold_value, borderColor: COLOR.orange, borderWidth: 2, pointRadius: 0 },
+      ],
+    },
+    options: gridOptions(),
+  });
+
+  const capital = Number(document.getElementById("modelCapitalInput").value);
+  const k = data.kpis;
+  const cards = [
+    { label: "Starting balance", value: `${egp(capital)} EGP` },
+    { label: "Ending balance", value: `${egp(k.final_value)} EGP`, sub: `Buy & hold: ${egp(k.buy_and_hold_final_value)} EGP` },
+    { label: "Total return", value: pct(k.total_return_pct), cls: k.total_return_pct >= 0 ? "good" : "critical" },
+    { label: "Max drawdown", value: `-${k.max_drawdown_pct.toFixed(2)}%`, cls: "critical" },
+    { label: "Buy / sell ops", value: `${k.num_buys} / ${k.num_sells}` },
+    { label: "Win rate", value: `${k.win_rate_pct.toFixed(1)}%` },
+    { label: "Sharpe ratio", value: k.sharpe.toFixed(2) },
+    { label: "Avg holding period", value: `${k.avg_holding_days.toFixed(1)} days` },
+  ];
+  document.getElementById("modelImpactGrid").innerHTML = cards
+    .map((c) => `
+      <div class="kpi-card">
+        <div class="label">${c.label}</div>
+        <div class="value ${c.cls || ""}">${c.value}</div>
+        ${c.sub ? `<div class="sub">${c.sub}</div>` : ""}
+      </div>`)
+    .join("");
+
+  document.getElementById("modelImpactNote").textContent =
+    `Long-only, long/flat: go long whenever ${data.model_label} predicts a positive next-day return, hold cash otherwise. ` +
+    `Test period only (${data.dates_test[0]} to ${data.dates_test[data.dates_test.length - 1]}) -- out-of-sample, exactly the ` +
+    `days this model never trained on.`;
+}
+
+// ============================================================ strategies ==
+
+async function initStrategiesTab() {
+  const strategies = await fetchJSON(`${API}/strategies`);
+  state.strategies = strategies;
+
+  const select = document.getElementById("strategySelect");
+  select.innerHTML = strategies.map((s) => `<option value="${s.key}">${s.label}</option>`).join("");
+
+  document.getElementById("runStrategyButton").addEventListener("click", runStrategyOnDemand);
+  document.getElementById("clearStrategyRunsButton").addEventListener("click", () => {
+    state.strategyRuns = [];
+    renderStrategyRuns();
+  });
+  state.strategyRuns = [];
+
+  await runStrategyOnDemand();
+}
+
+async function runStrategyOnDemand() {
+  const strategyKey = document.getElementById("strategySelect").value;
+  const universe = document.getElementById("strategyUniverseSelect").value;
+  const common = { universe, strategy: strategyKey };
+
+  let bt, m;
+  try {
+    [bt, m] = await Promise.all([
+      fetchJSON(`${API}/backtest?${new URLSearchParams(common)}`),
+      fetchJSON(`${API}/metrics?${new URLSearchParams(common)}`),
+    ]);
+  } catch (e) {
+    document.getElementById("strategyNote").textContent = `${strategyKey} isn't available on the ${universe} universe: ${e.message}`;
+    return;
+  }
+
+  document.getElementById("strategyNote").textContent =
+    `${bt.strategy_label} on the ${universe === "small" ? "small (6-stock)" : "full (34-stock)"} universe. ` +
+    `${bt.dates[0]} to ${bt.dates[bt.dates.length - 1]}. Portfolio and benchmark both start at 1.0.`;
+
+  const cards = [
+    { label: "Total return", value: pct(m.total_return * 100), cls: m.total_return >= 0 ? "good" : "critical" },
+    { label: "Sharpe ratio", value: m.sharpe.toFixed(2) },
+    { label: "Max drawdown", value: `-${(m.max_drawdown * 100).toFixed(2)}%`, cls: "critical" },
+  ];
+  if (m.win_rate_pct !== undefined) {
+    cards.push(
+      { label: "Win rate", value: `${m.win_rate_pct.toFixed(1)}%` },
+      { label: "Trades closed", value: `${m.num_trades_closed}`, sub: `${m.num_positions_open_at_end} still open` },
+      { label: "Avg holding period", value: `${m.avg_holding_days.toFixed(1)} days` },
+    );
+  }
+  document.getElementById("strategyRunMetricsGrid").innerHTML = cards
+    .map((c) => `
+      <div class="kpi-card">
+        <div class="label">${c.label}</div>
+        <div class="value ${c.cls || ""}">${c.value}</div>
+        ${c.sub ? `<div class="sub">${c.sub}</div>` : ""}
+      </div>`)
+    .join("");
+
+  destroy("strategyRun");
+  charts.strategyRun = new Chart(document.getElementById("strategyRunChart"), {
+    type: "line",
+    data: {
+      labels: bt.dates,
+      datasets: [
+        { label: bt.strategy_label, data: bt.portfolio, borderColor: COLOR.blue, borderWidth: 2, pointRadius: 0 },
+        { label: "Benchmark (equal-weight)", data: bt.benchmark, borderColor: COLOR.orange, borderWidth: 2, borderDash: [4, 3], pointRadius: 0 },
+      ],
+    },
+    options: gridOptions(),
+  });
+
+  state.strategyRuns.unshift({
+    time: new Date().toLocaleString(), strategy: bt.strategy_label, universe,
+    total_return_pct: m.total_return * 100, sharpe: m.sharpe, max_drawdown_pct: m.max_drawdown * 100,
+  });
+  renderStrategyRuns();
+}
+
+function renderStrategyRuns() {
+  document.getElementById("strategyRunsBody").innerHTML = state.strategyRuns
+    .map((r) => `
+      <tr>
+        <td>${r.time}</td>
+        <td>${r.strategy}</td>
+        <td>${r.universe}</td>
+        <td class="${r.total_return_pct >= 0 ? "action-buy" : "action-sell"}">${pct(r.total_return_pct)}</td>
+        <td>${r.sharpe.toFixed(2)}</td>
+        <td>-${r.max_drawdown_pct.toFixed(2)}%</td>
+      </tr>`)
+    .join("") || `<tr><td colspan="6" class="empty-note">No runs yet — click "Run strategy" above.</td></tr>`;
+}
+
+// =================================================== performance results ==
+
+async function loadPerformanceResults() {
+  state.performanceData = await fetchJSON(`${API}/performance-results`);
+  state.performanceSelected = new Set();
+
+  const stocks = [...new Set(state.performanceData.models.map((r) => r.symbol))].sort();
+  const stockFilter = document.getElementById("perfStockFilter");
+  stockFilter.innerHTML = `<option value="">All</option>` + stocks.map((s) => `<option value="${s}">${s}</option>`).join("");
+
+  document.getElementById("refreshPerformanceButton").addEventListener("click", async () => {
+    // Force a fresh pull (bypassing nothing server-side -- the backend caches
+    // per-checkpoint results since they never change without retraining, but
+    // this refetches this endpoint's own aggregation).
+    state.performanceData = await fetchJSON(`${API}/performance-results`);
+    renderPerformanceTable();
+    renderPerformanceGraphs();
+  });
+  ["perfKindFilter", "perfStockFilter", "perfSortSelect"].forEach((id) =>
+    document.getElementById(id).addEventListener("change", renderPerformanceTable)
+  );
+  document.getElementById("perfGraphGroupBy").addEventListener("change", renderPerformanceGraphs);
+  document.getElementById("performanceTableBody").addEventListener("click", (e) => {
+    const row = e.target.closest("tr[data-row-key]");
+    if (!row) return;
+    const key = row.dataset.rowKey;
+    if (state.performanceSelected.has(key)) state.performanceSelected.delete(key);
+    else state.performanceSelected.add(key);
+    renderPerformanceTable();
+    renderPerformanceCompareChart();
+  });
+
+  renderPerformanceTable();
+  renderPerformanceGraphs();
+}
+
+function _perfRows() {
+  const kind = document.getElementById("perfKindFilter").value;
+  const stock = document.getElementById("perfStockFilter").value;
+  const sortKey = document.getElementById("perfSortSelect").value;
+  const { models, strategies } = state.performanceData;
+
+  let rows = [];
+  if (kind !== "strategy") rows = rows.concat(models);
+  if (kind !== "model") rows = rows.concat(strategies);
+  if (stock) rows = rows.filter((r) => r.kind !== "model" || r.symbol === stock);
+
+  return rows.sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (av === undefined || av === null) return 1;
+    if (bv === undefined || bv === null) return -1;
+    return bv - av;
+  });
+}
+
+function renderPerformanceTable() {
+  const rows = _perfRows();
+  const best = state.performanceData.best_per_stock;
+
+  document.getElementById("performanceTableBody").innerHTML = rows
+    .map((r) => {
+      const rowKey = r.kind === "model" ? `model:${r.key}:${r.symbol}` : `strategy:${r.key}:${r.universe}`;
+      const isBest = r.kind === "model" && best[r.symbol] && best[r.symbol].key === r.key;
+      const selected = state.performanceSelected.has(rowKey);
+      return `
+      <tr data-row-key="${rowKey}" style="cursor:pointer;${selected ? "background:var(--row-highlight)" : ""}">
+        <td>${r.kind}</td>
+        <td>${r.label}${isBest ? ' <span class="badge best">Best</span>' : ""}${r.low_liquidity ? ' <span class="badge warn">Low liquidity</span>' : ""}</td>
+        <td>${r.kind === "model" ? r.symbol : r.universe}</td>
+        <td>${r.directional_accuracy_pct !== undefined ? r.directional_accuracy_pct.toFixed(1) + "%" : "—"}</td>
+        <td>${r.rmse !== undefined ? r.rmse.toFixed(6) : "—"}</td>
+        <td class="${r.total_return_pct >= 0 ? "action-buy" : "action-sell"}">${pct(r.total_return_pct)}</td>
+        <td>${r.sharpe !== undefined ? r.sharpe.toFixed(2) : "—"}</td>
+        <td>-${(r.max_drawdown_pct || 0).toFixed(2)}%</td>
+        <td>${r.win_rate_pct !== undefined ? r.win_rate_pct.toFixed(1) + "%" : "—"}</td>
+      </tr>`;
+    })
+    .join("") || `<tr><td colspan="9" class="empty-note">No results.</td></tr>`;
+}
+
+async function renderPerformanceCompareChart() {
+  const keys = [...state.performanceSelected];
+  document.getElementById("performanceCompareList").textContent = keys.length
+    ? `${keys.length} selected: ${keys.map((k) => k.split(":").slice(1).join(" / ")).join(", ")}`
+    : "No rows selected yet — click table rows above to select them.";
+
+  destroy("performanceCompare");
+  if (keys.length === 0) return;
+
+  // Selected rows can be a universe-wide strategy backtest and a single
+  // stock's model backtest at once -- genuinely different date ranges and
+  // lengths, not just different calendars. Rather than force them onto one
+  // shared date axis (the same misalignment bug the asset-comparison chart
+  // had to avoid earlier), plot by trading-day INDEX instead of calendar
+  // date -- honest about comparing shape/magnitude, not claiming the two
+  // curves are aligned in time.
+  const colors = [COLOR.blue, COLOR.orange, COLOR.aqua, COLOR.magenta, COLOR.violet, COLOR.yellow];
+  const series = [];
+  for (let i = 0; i < keys.length; i++) {
+    const [kind, key, third] = keys[i].split(":");
+    if (kind === "strategy") {
+      const bt = await fetchJSON(`${API}/backtest?${new URLSearchParams({ universe: third, strategy: key })}`);
+      series.push({ label: `${bt.strategy_label} (${third})`, data: bt.portfolio, color: colors[i % colors.length] });
+    } else {
+      const m = await fetchJSON(`${API}/models/${key}/${third}?capital=1000`);
+      series.push({ label: `${m.model_label} (${third})`, data: m.portfolio_value.map((v) => v / 1000), color: colors[i % colors.length] });
+    }
+  }
+
+  const maxLen = Math.max(...series.map((s) => s.data.length));
+  const opts = gridOptions();
+  charts.performanceCompare = new Chart(document.getElementById("performanceCompareChart"), {
+    type: "line",
+    data: {
+      labels: Array.from({ length: maxLen }, (_, i) => i),
+      datasets: series.map((s) => ({ label: s.label, data: s.data, borderColor: s.color, borderWidth: 2, pointRadius: 0 })),
+    },
+    options: {
+      ...opts,
+      scales: {
+        x: { ...opts.scales.x, title: { display: true, text: "trading days into each run", color: COLOR.text } },
+        y: { ...opts.scales.y, title: { display: true, text: "growth of 1.0", color: COLOR.text } },
+      },
+    },
+  });
+}
+
+async function renderPerformanceGraphs() {
+  const groupBy = document.getElementById("perfGraphGroupBy").value;
+  const grid = document.getElementById("performanceGraphsGrid");
+  grid.innerHTML = "";
+
+  const { models } = state.performanceData;
+  const groups = new Map();
+  for (const r of models) {
+    const key = groupBy === "stock" ? r.symbol : r.key;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+
+  let cardIndex = 0;
+  for (const [groupKey, rows] of groups) {
+    const card = document.createElement("div");
+    card.className = "graph-card";
+    const title = document.createElement("h3");
+    title.textContent = groupBy === "stock" ? groupKey : MODEL_GRAPH_LABELS[groupKey] || groupKey;
+    const canvas = document.createElement("canvas");
+    canvas.id = `perfGraphCanvas${cardIndex++}`;
+    card.appendChild(title);
+    const wrap = document.createElement("div");
+    wrap.className = "chart-wrap short";
+    wrap.appendChild(canvas);
+    card.appendChild(wrap);
+    grid.appendChild(card);
+
+    const opts = gridOptions();
+    new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: rows.map((r) => (groupBy === "stock" ? (MODEL_GRAPH_LABELS[r.key] || r.key) : r.symbol)),
+        datasets: [{
+          label: "Directional accuracy %",
+          data: rows.map((r) => r.directional_accuracy_pct),
+          backgroundColor: rows.map((r) => (r.low_liquidity ? COLOR.text : r.directional_accuracy_pct >= 50 ? COLOR.good ?? "#0ca30c" : COLOR.critical ?? "#d03b3b")),
+        }],
+      },
+      options: { ...opts, plugins: { ...opts.plugins, legend: { display: false } }, scales: { ...opts.scales, y: { ...opts.scales.y, min: 0, max: 100 } } },
+    });
+  }
+}
+
+const MODEL_GRAPH_LABELS = { nn: "NN", lstm: "LSTM" };
+
+init();
