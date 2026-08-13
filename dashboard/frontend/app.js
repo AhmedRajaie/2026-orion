@@ -169,6 +169,13 @@ function setPanelLoading(panelId, isLoading) {
   }
 }
 
+function setPanelError(panelId, hasError) {
+  const panel = document.getElementById(panelId);
+  if (panel) {
+    panel.classList.toggle("is-error", hasError);
+  }
+}
+
 function populateSymbolSelector(symbols) {
   const select = document.getElementById("symbolSelect");
   if (!select) return;
@@ -242,7 +249,7 @@ function getChartOptions() {
   return {
     responsive: true,
     maintainAspectRatio: false,
-    animation: false,
+    animation: { duration: 300, easing: "easeOutQuart" },
     plugins: {
       legend: {
         labels: {
@@ -440,6 +447,7 @@ async function loadPriceChart(symbol) {
 
 async function loadStrategyChart(symbol) {
   try {
+    setPanelError("tradeHistoryPanel", false);
     const res = await fetch(`${API}/strategy/${symbol}${getUniverseQuery()}&cash=${getStartingCash()}`);
     if (!res.ok) throw new Error(`/strategy/${symbol} returned ${res.status}`);
     const s = await res.json();
@@ -607,6 +615,7 @@ async function loadStrategyChart(symbol) {
     applyTimeRangeFilter();
   } catch (err) {
     console.error("[loadStrategyChart] failed:", err);
+    setPanelError("tradeHistoryPanel", true);
   }
 }
 
@@ -661,6 +670,7 @@ async function loadEquityChart() {
 async function loadFeaturesPanel() {
   try {
     setPanelLoading("featuresPanelWrapper", true);
+    setPanelError("featuresPanelWrapper", false);
     const res = await fetch(`${API}/features`);
     if (!res.ok) throw new Error(`/features returned ${res.status}`);
     const features = await res.json();
@@ -689,6 +699,7 @@ async function loadFeaturesPanel() {
       .join("");
   } catch (err) {
     console.error("[loadFeaturesPanel] failed:", err);
+    setPanelError("featuresPanelWrapper", true);
   } finally {
     setPanelLoading("featuresPanelWrapper", false);
   }
@@ -894,6 +905,8 @@ function bindDay3Controls() {
 
 async function loadDay3Comparison() {
   setPanelLoading("day3ComparisonPanel", true);
+  setPanelError("day3ComparisonPanel", false);
+  setPanelError("day3RankingPanel", false);
   try {
     const res = await fetch(`${API}/day3-comparison`);
     if (!res.ok) throw new Error(`/day3-comparison returned ${res.status}`);
@@ -904,6 +917,8 @@ async function loadDay3Comparison() {
     renderDay3RankingTable(day3ComparisonData.ranking || []);
   } catch (err) {
     console.error("[loadDay3Comparison] failed:", err);
+    setPanelError("day3ComparisonPanel", true);
+    setPanelError("day3RankingPanel", true);
   } finally {
     setPanelLoading("day3ComparisonPanel", false);
   }
@@ -922,9 +937,16 @@ async function loadMetrics() {
 async function refreshDashboard() {
   setPanelLoading("pricePanel", true);
   setPanelLoading("strategyPanel", true);
+  setPanelLoading("statusControlsPanel", true);
   try {
-    await checkHealth();
+    const healthPromise = checkHealth();
+    const featuresPromise = loadFeaturesPanel();
+    const equityPromise = loadEquityChart();
+    const metricsPromise = loadMetrics();
+    const strategyPerfPromise = loadStrategyPerformance();
+    const day3Promise = loadDay3Comparison();
 
+    setPanelError("statusControlsPanel", false);
     const universeResponse = await fetch(`${API}/universe${getUniverseQuery()}`);
     if (!universeResponse.ok) throw new Error(`/universe returned ${universeResponse.status}`);
     const symbols = await universeResponse.json();
@@ -936,23 +958,28 @@ async function refreshDashboard() {
       selectedSymbol = symbols[0] || null;
     }
 
-    if (!selectedSymbol) {
-      return;
+    let priceChartPromise = Promise.resolve();
+    if (selectedSymbol) {
+      document.getElementById("symbolSelect").value = selectedSymbol;
+      priceChartPromise = loadPriceChart(selectedSymbol);
     }
 
-    document.getElementById("symbolSelect").value = selectedSymbol;
-
-    await loadFeaturesPanel();
-    await loadPriceChart(selectedSymbol);
-    await loadEquityChart();
-    await loadMetrics();
-    await loadStrategyPerformance();
-    await loadDay3Comparison();
+    await Promise.allSettled([
+      healthPromise,
+      featuresPromise,
+      equityPromise,
+      metricsPromise,
+      strategyPerfPromise,
+      day3Promise,
+      priceChartPromise,
+    ]);
   } catch (err) {
     console.error("[refreshDashboard] failed:", err);
+    setPanelError("statusControlsPanel", true);
   } finally {
     setPanelLoading("pricePanel", false);
     setPanelLoading("strategyPanel", false);
+    setPanelLoading("statusControlsPanel", false);
   }
 }
 
@@ -967,5 +994,3 @@ document.addEventListener("click", (event) => {
   }
 });
 refreshDashboard();
-
-loadDay3Comparison();
