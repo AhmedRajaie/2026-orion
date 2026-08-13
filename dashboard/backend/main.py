@@ -25,7 +25,6 @@ from tradinglab.strategies.sma import sma_crossover_weights
 
 load_dotenv()
 
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "mock").lower()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -48,6 +47,30 @@ CONFIG = {
     },
     "mock": {"api_key": None, "base_url": None, "model": "gpt-5-mini"},
 }
+
+
+def _active_llm_provider() -> str:
+    """Use the provider selected in .env, or a configured provider if omitted."""
+    requested = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    if requested:
+        return requested
+    return next(
+        (name for name in ("gemini", "anthropic", "openai") if CONFIG[name]["api_key"]),
+        "mock",
+    )
+
+
+def _fallback_llm_providers(primary: str) -> list[str]:
+    """Configured alternatives, used only after a provider reports quota exhaustion."""
+    return [
+        name for name in ("anthropic", "openai", "gemini")
+        if name != primary and CONFIG[name]["api_key"]
+    ]
+
+
+def _is_quota_error(error: Exception) -> bool:
+    message = str(error).lower()
+    return "429" in message or "quota" in message or "resource_exhausted" in message
 
 app = FastAPI(title="Younit-style trading dashboard")
 
@@ -154,6 +177,11 @@ class ChatRequest(BaseModel):
     messages: list[dict[str, str]] = Field(default_factory=list)
 
 
+class DebateRequest(BaseModel):
+    symbol: Optional[str] = None
+    headlines: list[str] = Field(default_factory=list)
+
+
 def _load_symbol_ohlcv(symbol: str) -> dict[str, float | int | None]:
     csv_file = DATA_DIR / f"{symbol}.csv"
     if not csv_file.exists():
@@ -246,6 +274,21 @@ def _format_stock_context(symbol: str) -> str:
     return "\n".join(lines)
 
 
+def _market_rows() -> list[dict[str, float | str]]:
+    """Return the same ranking data shown by the Market Intelligence panel."""
+    rows = []
+    for symbol in feed.symbols:
+        metrics = _symbol_metrics(symbol)
+        score = (
+            metrics["total_return_pct"]
+            - 0.5 * abs(metrics["max_drawdown_pct"])
+            + 0.25 * metrics["daily_change_pct"]
+            + (5.0 if metrics["trend"] == "Bullish" else 0.0)
+        )
+        rows.append({**metrics, "score": score})
+    return sorted(rows, key=lambda row: row["score"], reverse=True)
+
+
 def _strategy_comparison_results(symbol: str) -> dict[str, object]:
     """Run all strategies on a single-symbol feed and return comparison data.
 
@@ -292,6 +335,32 @@ def _strategy_comparison_results(symbol: str) -> dict[str, object]:
 @lru_cache(maxsize=64)
 def _get_strategy_comparison(symbol: str) -> dict[str, object]:
     return _strategy_comparison_results(symbol)
+
+
+def _format_dashboard_chat_context(symbol: str, include_strategies: bool = False) -> str:
+    """Ground every chat response in fresh dashboard facts instead of static prompts."""
+    selected = _format_stock_context(symbol)
+    top_stocks = _market_rows()[:5]
+    ranking = "\n".join(
+        f"{rank}. {row['symbol']}: score {row['score']:.2f}, return {row['total_return_pct']:.2f}%, "
+        f"drawdown {row['max_drawdown_pct']:.2f}%, {row['trend']}"
+        for rank, row in enumerate(top_stocks, start=1)
+    )
+    context = (
+        f"SELECTED STOCK\n{selected}\n\n"
+        f"TOP MARKET RANKING\n{ranking}"
+    )
+    if not include_strategies:
+        return context
+
+    strategies = _get_strategy_comparison(symbol)["strategies"]
+    strategy_summary = "\n".join(
+        f"- {item['name']}: return {item['total_return_pct']:.2f}%, "
+        f"benchmark {item['benchmark_return_pct']:.2f}%, drawdown {item['max_drawdown_pct']:.2f}%, "
+        f"trades {item['num_trades']}"
+        for item in strategies
+    )
+    return f"{context}\n\nSTRATEGY RESULTS FOR {symbol}\n{strategy_summary}"
 
 
 def _mock_llm_response(messages: list[dict[str, str]], system: str, symbol: str) -> str:
@@ -363,12 +432,23 @@ def _mock_llm_response(messages: list[dict[str, str]], system: str, symbol: str)
     )
 
 
-def _llm_chat(messages, system=None, provider=LLM_PROVIDER, max_tokens=400):
+def _clean_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Keep only fields accepted by chat-completions APIs and a short history."""
+    cleaned = []
+    for message in messages[-12:]:
+        role, content = message.get("role"), message.get("content")
+        if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
+            cleaned.append({"role": role, "content": content.strip()})
+    return cleaned
+
+
+def _llm_chat(messages, system=None, provider=None, max_tokens=400, symbol=None):
+    provider = provider or _active_llm_provider()
     if provider == "mock":
         if not messages:
             return "No chat history provided."
-        symbol = messages[0].get("symbol") if "symbol" in messages[0] else feed.symbols[0]
-        return _mock_llm_response(messages, system or "", symbol)
+        selected_symbol = symbol or feed.symbols[0]
+        return _mock_llm_response(messages, system or "", selected_symbol)
 
     cfg = CONFIG.get(provider)
     if not cfg or not cfg["api_key"]:
@@ -378,7 +458,9 @@ def _llm_chat(messages, system=None, provider=LLM_PROVIDER, max_tokens=400):
 
     client = OpenAI(api_key=cfg["api_key"], base_url=cfg["base_url"]) if cfg["base_url"] else OpenAI(api_key=cfg["api_key"])
     full_messages = ([{"role": "system", "content": system}] if system else []) + messages
-    resp = client.chat.completions.create(model=cfg["model"], messages=full_messages, max_tokens=max_tokens)
+    resp = client.chat.completions.create(
+        model=cfg["model"], messages=full_messages, max_tokens=max_tokens, temperature=0.35
+    )
     return resp.choices[0].message.content
 
 
@@ -387,25 +469,27 @@ def chat(request: ChatRequest):
     if request.symbol and request.symbol not in feed.symbols:
         raise HTTPException(status_code=404, detail="symbol not found")
 
-    symbol_summary = (
-        _format_stock_context(request.symbol)
-        if request.symbol
-        else "No specific symbol selected. Answer with the information you have."
+    symbol = request.symbol or feed.symbols[0]
+    question = request.question or ""
+    strategy_terms = ("strategy", "strategies", "benchmark", "backtest", "drawdown", "trades")
+    dashboard_context = _format_dashboard_chat_context(
+        symbol,
+        include_strategies=any(term in question.lower() for term in strategy_terms),
     )
 
     system_prompt = (
         "You are a helpful stock assistant for the Egyptian equities dashboard. "
-        "Use the facts provided below and answer the user's question directly. "
-        "Avoid hallucinating prices or claims not supported by the data."
+        "Use only the live dashboard facts supplied in the current user message. "
+        "Answer the specific question directly, cite the relevant figures, and distinguish facts from inference. "
+        "If the data cannot answer the question, say so. This is educational information, not financial advice."
     )
 
-    messages = [dict(m) for m in request.messages] if request.messages else []
+    messages = _clean_messages(request.messages)
     if request.question:
         messages.append(
             {
                 "role": "user",
-                "content": f"{symbol_summary}\n\nQuestion: {request.question}",
-                "symbol": request.symbol or feed.symbols[0],
+                "content": f"{dashboard_context}\n\nUSER QUESTION\n{request.question}",
             }
         )
 
@@ -413,12 +497,85 @@ def chat(request: ChatRequest):
         raise HTTPException(status_code=400, detail="question or messages required")
 
     try:
-        answer = _llm_chat(messages, system=system_prompt)
-        return {"answer": answer, "provider": LLM_PROVIDER}
+        answer = _llm_chat(messages, system=system_prompt, symbol=request.symbol)
+        return {"answer": answer, "provider": _active_llm_provider()}
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"LLM request failed: {exc}")
+
+
+@app.post("/investment-debate")
+def investment_debate(request: DebateRequest):
+    """Run a quota-efficient bull/bear/judge workflow from the debate notebook."""
+    symbol = request.symbol or feed.symbols[0]
+    if symbol not in feed.symbols:
+        raise HTTPException(status_code=404, detail="symbol not found")
+
+    headlines = [headline.strip() for headline in request.headlines if headline.strip()][:12]
+    if not headlines:
+        raise HTTPException(status_code=400, detail="add at least one headline")
+
+    headline_text = "\n".join(f"- {headline}" for headline in headlines)
+    evidence = f"{_format_stock_context(symbol)}\n\nHeadlines supplied by the user:\n{headline_text}"
+    debate_system = (
+        "You are an Egyptian-equities investment committee simulating three viewpoints from the supplied "
+        "dashboard facts and headlines only. Return exactly BULL:, BEAR:, and VERDICT: sections. "
+        "Give 3-4 sentences for bull and bear, then a neutral 4-6 sentence verdict ending BUY, SELL, or HOLD. "
+        "This is educational analysis, not financial advice."
+    )
+
+    try:
+        provider = _active_llm_provider()
+        if provider == "mock":
+            metrics = _symbol_metrics(symbol)
+            bull_case = (
+                f"{symbol}'s {metrics['trend'].lower()} trend and {metrics['daily_change_pct']:.2f}% daily move can support a positive case. "
+                "The supplied headlines may reinforce that view, but they require source verification."
+            )
+            bear_case = (
+                f"{symbol}'s maximum drawdown of {metrics['max_drawdown_pct']:.2f}% highlights meaningful downside risk. "
+                "The supplied headlines should not be treated as verified investment research."
+            )
+            verdict = "HOLD — review verified news and your own risk tolerance before making an investment decision."
+        else:
+            reply = _llm_chat(
+                [{"role": "user", "content": evidence}],
+                system=debate_system,
+                provider=provider,
+                max_tokens=700,
+            )
+            sections = {"BULL": "", "BEAR": "", "VERDICT": ""}
+            current = None
+            for line in reply.splitlines():
+                heading = line.strip().rstrip(":").upper()
+                if heading in sections:
+                    current = heading
+                elif current:
+                    sections[current] += ("\n" if sections[current] else "") + line.strip()
+            bull_case = sections["BULL"] or reply
+            bear_case = sections["BEAR"] or "The model did not return a separate bear section."
+            verdict = sections["VERDICT"] or "HOLD — review the available evidence carefully."
+        return {"symbol": symbol, "bull_case": bull_case, "bear_case": bear_case, "verdict": verdict, "provider": provider}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        if _is_quota_error(exc):
+            metrics = _symbol_metrics(symbol)
+            return {
+                "symbol": symbol,
+                "bull_case": (
+                    f"{symbol}'s {metrics['trend'].lower()} trend and {metrics['daily_change_pct']:.2f}% daily move support a positive technical case. "
+                    "The supplied headline still needs verification."
+                ),
+                "bear_case": (
+                    f"The maximum drawdown of {metrics['max_drawdown_pct']:.2f}% highlights meaningful downside risk. "
+                    "Treat unverified headlines as context, not evidence."
+                ),
+                "verdict": "HOLD — the live provider quota is temporarily exhausted, so verify the headline and try again later.",
+                "provider": "dashboard fallback (Gemini quota reached)",
+            }
+        raise HTTPException(status_code=500, detail=f"LLM debate failed: {exc}")
 
 
 @app.get("/strategy-comparison")
@@ -495,17 +652,7 @@ def indicators(symbol: str):
 @app.get("/market-overview")
 def market_overview():
     """Rank the whole universe using return, risk and current trend."""
-    rows = []
-    for symbol in feed.symbols:
-        metrics = _symbol_metrics(symbol)
-        score = (
-            metrics["total_return_pct"]
-            - 0.5 * abs(metrics["max_drawdown_pct"])
-            + 0.25 * metrics["daily_change_pct"]
-            + (5.0 if metrics["trend"] == "Bullish" else 0.0)
-        )
-        rows.append({**metrics, "score": score})
-    rows.sort(key=lambda row: row["score"], reverse=True)
+    rows = _market_rows()
     return {"count": len(rows), "stocks": rows}
 
 

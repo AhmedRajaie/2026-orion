@@ -5,6 +5,9 @@ const API = "http://localhost:8000";
 let priceChart;
 let strategyChart;
 let comparisonChart;
+let trendChart;
+let signalChart;
+let scoreChart;
 let currentSymbol = "";
 let chatHistory = [];
 
@@ -678,6 +681,183 @@ async function loadMarketOverview() {
 
 
 // ============================
+// RENDER MARKET ANALYTICS CHARTS
+// ============================
+
+async function renderMarketAnalytics() {
+    try {
+        const result = await apiGet("/market-overview");
+        const rows = Array.isArray(result?.stocks) ? result.stocks : [];
+
+        if (rows.length === 0) return;
+
+        // Calculate trend distribution
+        const trendCounts = { "Up": 0, "Neutral": 0, "Down": 0 };
+        rows.forEach(stock => {
+            const trend = stock.trend || "Neutral";
+            if (trendCounts.hasOwnProperty(trend)) {
+                trendCounts[trend]++;
+            }
+        });
+
+        // Calculate signal distribution
+        const signalCounts = { "Buy": 0, "Hold": 0, "Sell": 0 };
+        rows.forEach(stock => {
+            const signal = stock.signal || "Hold";
+            if (signalCounts.hasOwnProperty(signal)) {
+                signalCounts[signal]++;
+            }
+        });
+
+        // Calculate score distribution (Top 30%, Middle 40%, Bottom 30%)
+        const scores = rows.map(s => Number(s.score ?? 0)).sort((a, b) => b - a);
+        const topThreshold = scores[Math.floor(scores.length * 0.3)];
+        const bottomThreshold = scores[Math.floor(scores.length * 0.7)];
+        
+        const scoreDistribution = { "Top": 0, "Middle": 0, "Low": 0 };
+        rows.forEach(stock => {
+            const score = Number(stock.score ?? 0);
+            if (score >= topThreshold) scoreDistribution["Top"]++;
+            else if (score >= bottomThreshold) scoreDistribution["Middle"]++;
+            else scoreDistribution["Low"]++;
+        });
+
+        // Render Trend Chart
+        renderTrendChart(trendCounts);
+
+        // Render Signal Chart
+        renderSignalChart(signalCounts);
+
+        // Render Score Chart
+        renderScoreChart(scoreDistribution);
+
+    } catch (error) {
+        console.warn("Market analytics unavailable:", error);
+    }
+}
+
+function renderTrendChart(trendCounts) {
+    const ctx = document.getElementById("trendChart");
+    if (!ctx) return;
+
+    if (trendChart) {
+        trendChart.destroy();
+    }
+
+    trendChart = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+            labels: ["📈 Up", "➡️ Neutral", "📉 Down"],
+            datasets: [{
+                data: [trendCounts["Up"], trendCounts["Neutral"], trendCounts["Down"]],
+                backgroundColor: [
+                    "rgba(74, 222, 128, 0.7)",
+                    "rgba(148, 163, 184, 0.7)",
+                    "rgba(248, 113, 113, 0.7)"
+                ],
+                borderColor: ["#4ade80", "#94a3b8", "#f87171"],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: "bottom",
+                    labels: {
+                        color: "#cbd5e1",
+                        font: { size: 12, weight: 600 },
+                        padding: 12
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderSignalChart(signalCounts) {
+    const ctx = document.getElementById("signalChart");
+    if (!ctx) return;
+
+    if (signalChart) {
+        signalChart.destroy();
+    }
+
+    signalChart = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+            labels: ["🟢 Buy", "🟡 Hold", "🔴 Sell"],
+            datasets: [{
+                data: [signalCounts["Buy"], signalCounts["Hold"], signalCounts["Sell"]],
+                backgroundColor: [
+                    "rgba(34, 197, 94, 0.7)",
+                    "rgba(251, 146, 60, 0.7)",
+                    "rgba(244, 114, 182, 0.7)"
+                ],
+                borderColor: ["#22c55e", "#fb923c", "#f472b6"],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: "bottom",
+                    labels: {
+                        color: "#cbd5e1",
+                        font: { size: 12, weight: 600 },
+                        padding: 12
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderScoreChart(scoreDistribution) {
+    const ctx = document.getElementById("scoreChart");
+    if (!ctx) return;
+
+    if (scoreChart) {
+        scoreChart.destroy();
+    }
+
+    scoreChart = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+            labels: ["⭐ Top Performers", "📊 Mid Range", "📉 Laggards"],
+            datasets: [{
+                data: [scoreDistribution["Top"], scoreDistribution["Middle"], scoreDistribution["Low"]],
+                backgroundColor: [
+                    "rgba(168, 85, 247, 0.7)",
+                    "rgba(59, 130, 246, 0.7)",
+                    "rgba(107, 114, 128, 0.7)"
+                ],
+                borderColor: ["#a855f7", "#3b82f6", "#6b7280"],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: "bottom",
+                    labels: {
+                        color: "#cbd5e1",
+                        font: { size: 12, weight: 600 },
+                        padding: 12
+                    }
+                }
+            }
+        }
+    });
+}
+
+
+// ============================
 // STOCK COMPARISON
 // ============================
 
@@ -889,7 +1069,7 @@ async function askChatQuestion(question) {
                         currentSymbol,
 
                     messages:
-                        chatHistory
+                        chatHistory.slice(0, -1)
                 })
             }
         );
@@ -914,7 +1094,7 @@ async function askChatQuestion(question) {
         await response.json();
 
 
-    return json.answer;
+    return json;
 }
 
 
@@ -953,6 +1133,36 @@ function setChatResponse(
 }
 
 
+async function runInvestmentDebate(headlines) {
+
+    const response = await fetch(
+        `${API}/investment-debate`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol: currentSymbol, headlines })
+        }
+    );
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.detail || response.statusText);
+    }
+
+    return response.json();
+}
+
+
+function setDebateResponse(message) {
+
+    const element = document.getElementById("debateResponse");
+
+    if (element) {
+        element.textContent = message;
+    }
+}
+
+
 // ============================
 // INITIALIZATION
 // ============================
@@ -973,6 +1183,8 @@ async function init() {
         await renderStrategyComparison();
 
         await loadMarketOverview();
+
+        await renderMarketAnalytics();
 
         await loadComparison();
 
@@ -1036,10 +1248,12 @@ async function init() {
                     );
 
 
-                    const answer =
+                    const result =
                         await askChatQuestion(
                             question
                         );
+
+                    const answer = result.answer;
 
 
                     addChatHistory(
@@ -1049,7 +1263,7 @@ async function init() {
 
 
                     setChatResponse(
-                        answer
+                        `${answer}\n\nPowered by: ${result.provider}`
                     );
 
                 } catch (error) {
@@ -1076,6 +1290,41 @@ async function init() {
                 }
             }
         );
+    }
+
+
+    const debateInput = document.getElementById("debateHeadlines");
+    const debateButton = document.getElementById("debateSendButton");
+
+    if (debateButton && debateInput) {
+        debateButton.onclick = async () => {
+            const headlines = debateInput.value
+                .split("\n")
+                .map(headline => headline.trim())
+                .filter(Boolean);
+
+            if (!headlines.length) {
+                setDebateResponse("Please add at least one headline first.");
+                return;
+            }
+
+            setDebateResponse("Analysts are reviewing the headlines...");
+            debateButton.disabled = true;
+
+            try {
+                const result = await runInvestmentDebate(headlines);
+                setDebateResponse(
+                    `BULL CASE\n${result.bull_case}\n\n` +
+                    `BEAR CASE\n${result.bear_case}\n\n` +
+                    `COMMITTEE VERDICT\n${result.verdict}\n\n` +
+                    `Provider: ${result.provider}`
+                );
+            } catch (error) {
+                setDebateResponse(`Error: ${error.message}`);
+            } finally {
+                debateButton.disabled = false;
+            }
+        };
     }
 
 
@@ -1108,6 +1357,8 @@ async function init() {
                 await renderStrategyComparison();
 
                 await loadMarketOverview();
+
+                await renderMarketAnalytics();
 
                 await loadComparison();
             };
