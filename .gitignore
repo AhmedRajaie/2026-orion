@@ -7,5 +7,4 @@ models/
 *.zip
 .DS_Store
 .vscode/
-*.log
-*.pid
+.env
