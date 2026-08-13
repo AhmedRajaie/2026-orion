@@ -56,6 +56,23 @@
         </div>
         <canvas id="tiktok06Chart"></canvas>
       </article>
+
+      <article class="chart-card chat-card">
+        <div class="chart-header chat-header">
+          <div>
+            <p class="eyebrow">AI assistant</p>
+            <h2>Ask Orion about the selected stock</h2>
+          </div>
+          <span class="chat-symbol" id="chatSymbol">ADIB</span>
+        </div>
+        <div class="chat-messages" id="chatMessages" aria-live="polite"></div>
+        <form class="chat-form" id="chatForm">
+          <label class="sr-only" for="chatInput">Ask a question about this stock</label>
+          <textarea id="chatInput" rows="2" maxlength="2000" placeholder="e.g. What does the current SMA signal mean?"></textarea>
+          <button id="chatSend" type="submit">Send</button>
+        </form>
+        <p class="chat-note">Educational dashboard analysis only — not investment advice.</p>
+      </article>
     </section>
   </div>
 

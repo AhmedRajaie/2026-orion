@@ -4,6 +4,8 @@ let portfolioChartInstance = null;
 let drawdownChartInstance = null;
 let simulationChartInstance = null;
 let tiktok06ChartInstance = null;
+let selectedSymbol = "ADIB";
+let chatHistory = [];
 
 async function initDashboard() {
   setStatus("Loading stock list...");
@@ -48,6 +50,8 @@ function populateStockSelector(symbols) {
 
 async function loadSymbol(symbol) {
   setStatus(`Loading ${symbol}...`);
+  selectedSymbol = symbol;
+  resetChat(symbol);
 
   try {
     const [data, simulationData, tiktok06Data] = await Promise.all([
@@ -103,6 +107,84 @@ async function fetchSimulations(symbol) {
   }
   return await response.json();
 }
+
+function resetChat(symbol) {
+  const badge = document.getElementById("chatSymbol");
+  if (badge) badge.textContent = symbol;
+
+  const messages = document.getElementById("chatMessages");
+  if (!messages) return;
+
+  chatHistory = [];
+  messages.innerHTML = "";
+  appendChatMessage(
+    "assistant",
+    `I’m Orion. Ask me about ${symbol}'s latest close, SMA signal, or backtest performance.`
+  );
+}
+
+function appendChatMessage(role, content) {
+  const container = document.getElementById("chatMessages");
+  if (!container) return;
+
+  const message = document.createElement("article");
+  message.className = `chat-message chat-message--${role}`;
+  const label = document.createElement("span");
+  label.className = "chat-message__label";
+  label.textContent = role === "user" ? "You" : "Orion";
+  const body = document.createElement("p");
+  body.textContent = content;
+  message.append(label, body);
+  container.appendChild(message);
+  container.scrollTop = container.scrollHeight;
+}
+
+function setChatLoading(isLoading) {
+  const input = document.getElementById("chatInput");
+  const button = document.getElementById("chatSend");
+  if (input) input.disabled = isLoading;
+  if (button) {
+    button.disabled = isLoading;
+    button.textContent = isLoading ? "Thinking..." : "Send";
+  }
+}
+
+async function submitChat(event) {
+  event.preventDefault();
+  const input = document.getElementById("chatInput");
+  const message = input?.value.trim();
+  if (!message) return;
+
+  appendChatMessage("user", message);
+  input.value = "";
+  setChatLoading(true);
+
+  try {
+    const response = await fetch(`${API_BASE}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        symbol: selectedSymbol,
+        history: chatHistory,
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Chat request failed.");
+
+    chatHistory.push({ role: "user", content: message });
+    chatHistory.push({ role: "assistant", content: data.answer });
+    appendChatMessage("assistant", data.answer);
+  } catch (error) {
+    console.error(error);
+    appendChatMessage("assistant", "I couldn’t reach the AI service. Please confirm the backend is running and the API key is valid.");
+  } finally {
+    setChatLoading(false);
+    input?.focus();
+  }
+}
+
+document.getElementById("chatForm")?.addEventListener("submit", submitChat);
 
 async function fetchTikTok06() {
   const response = await fetch(`${API_BASE}/production/tiktok-06`);

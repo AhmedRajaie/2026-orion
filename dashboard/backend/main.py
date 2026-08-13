@@ -1,7 +1,10 @@
 ﻿from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 from pathlib import Path
 from functools import lru_cache
+from dotenv import load_dotenv
+import os
 import sys
 import pandas as pd
 import numpy as np
@@ -22,6 +25,7 @@ app.add_middleware(
 DATA_FOLDER = Path(__file__).resolve().parents[2] / "data" / "egx"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SYMBOL = "ADIB"
+load_dotenv(PROJECT_ROOT / ".env")
 
 if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
@@ -53,6 +57,48 @@ def load_symbol_data(symbol: str):
     df["SMA9"] = df["close"].rolling(9).mean()
     df["SMA20"] = df["close"].rolling(20).mean()
     return df
+
+
+class ChatMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(min_length=1, max_length=2_000)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2_000)
+    symbol: str = Field(default=DEFAULT_SYMBOL, min_length=1, max_length=12)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=12)
+
+
+def _format_sma(value: float) -> str:
+    return "N/A" if pd.isna(value) else f"{float(value):.2f}"
+
+
+def _chat_context(symbol: str) -> str:
+    """Create a compact, data-grounded context for the dashboard assistant."""
+    df = load_symbol_data(symbol)
+    metrics = _simulate_sma(df)
+    latest = df.iloc[-1]
+    sma9 = latest["SMA9"]
+    sma20 = latest["SMA20"]
+    if pd.isna(sma9) or pd.isna(sma20):
+        trend = "Not enough recent data to calculate the SMA signal."
+    elif sma9 > sma20:
+        trend = "SMA9 is above SMA20 (bullish crossover state)."
+    else:
+        trend = "SMA9 is below SMA20 (bearish crossover state)."
+
+    return (
+        f"Selected EGX symbol: {symbol.upper()}\n"
+        f"Latest close: {float(latest['close']):.2f}\n"
+        f"SMA9: {_format_sma(sma9)}\n"
+        f"SMA20: {_format_sma(sma20)}\n"
+        f"Signal: {trend}\n"
+        f"SMA backtest total return: {metrics['total_return_pct']:.2f}%\n"
+        f"SMA backtest max drawdown: {metrics['max_drawdown_pct']:.2f}%\n"
+        f"SMA backtest Sharpe ratio: {metrics['sharpe_ratio'] if metrics['sharpe_ratio'] is not None else 'N/A'}\n"
+        f"Buy signals: {metrics['buy_signals']}; sell signals: {metrics['sell_signals']}"
+    )
 
 
 def _summarize_series(portfolio_values, initial_cash=1000.0):
@@ -234,6 +280,60 @@ def simulations(symbol: str = DEFAULT_SYMBOL):
         )
 
     return {"symbol": symbol.upper(), "dates": dates, "simulations": payload}
+
+
+@app.post("/chat")
+def chat(request: ChatRequest):
+    """Answer questions using the selected symbol's dashboard data as context."""
+    provider = os.getenv("LLM_PROVIDER", "gemini").lower()
+    provider_settings = {
+        "gemini": {
+            "api_key": os.getenv("GEMINI_API_KEY"),
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "model": os.getenv("LLM_MODEL", "gemini-flash-latest"),
+        },
+        "openai": {
+            "api_key": os.getenv("OPENAI_API_KEY"),
+            "base_url": None,
+            "model": os.getenv("LLM_MODEL", "gpt-5-mini"),
+        },
+    }
+    if provider not in provider_settings:
+        raise HTTPException(status_code=400, detail="LLM_PROVIDER must be 'gemini' or 'openai'.")
+
+    settings = provider_settings[provider]
+    if not settings["api_key"]:
+        raise HTTPException(status_code=503, detail=f"Missing API key for {provider}. Check the project .env file.")
+
+    system_prompt = (
+        "You are Orion, a concise Egyptian stock-market dashboard assistant. "
+        "Answer only from the supplied dashboard context when discussing the selected symbol. "
+        "Clearly label any inference, explain terms simply, and never claim live news, live prices, "
+        "or certainty. This is educational information, not personalized financial advice.\n\n"
+        "DASHBOARD CONTEXT\n"
+        + _chat_context(request.symbol)
+    )
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend(message.model_dump() for message in request.history)
+    messages.append({"role": "user", "content": request.message})
+
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=settings["api_key"], base_url=settings["base_url"])
+        completion = client.chat.completions.create(
+            model=settings["model"],
+            messages=messages,
+            max_tokens=500,
+        )
+        answer = completion.choices[0].message.content
+        if not answer:
+            raise ValueError("The model returned an empty response.")
+        return {"answer": answer, "symbol": request.symbol.upper(), "provider": provider}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="The AI provider could not complete the request.") from exc
 
 
 @lru_cache(maxsize=1)
