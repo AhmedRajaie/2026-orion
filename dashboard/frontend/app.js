@@ -784,9 +784,31 @@ const DAY3_STRATEGY_COLORS = {
 let day3ComparisonData = null;
 let day3SelectedKey = null; // null = overview (all 5 strategies), otherwise a strategies key
 
+// Display-only label overrides for the Week 2 Day 3 panel. Does not affect
+// underlying data keys, API "name"/"label" values, ordering, or calculations.
+const DAY3_TABLE_LABELS = {
+  "My MLP": "mlp",
+  "My LSTM": "lstm",
+  "Professor's LSTM": "lstm",
+  "Professor's MLP": "mlp",
+};
+function day3TableLabel(label) {
+  return DAY3_TABLE_LABELS[label] || label;
+}
+
+// Graph (legend/tooltip/title) keeps "My MLP"/"My LSTM" as-is; only the
+// professor strategies are shortened here.
+const DAY3_GRAPH_LABELS = {
+  "Professor's LSTM": "lstm",
+  "Professor's MLP": "mlp",
+};
+function day3GraphLabel(label) {
+  return DAY3_GRAPH_LABELS[label] || label;
+}
+
 function renderDay3OverviewChart(data) {
   const datasets = Object.entries(data.strategies).map(([key, strategy]) => ({
-    label: strategy.label,
+    label: day3GraphLabel(strategy.label),
     data: strategy.portfolio,
     borderColor: DAY3_STRATEGY_COLORS[key] || COLORS.strategy,
     pointRadius: 0,
@@ -815,7 +837,7 @@ function renderDay3StrategyChart(data, key) {
     labels: data.dates,
     datasets: [
       {
-        label: strategy.label,
+        label: day3GraphLabel(strategy.label),
         data: strategy.portfolio,
         borderColor: DAY3_STRATEGY_COLORS[key] || COLORS.strategy,
         pointRadius: 0,
@@ -848,8 +870,8 @@ function renderDay3Chart() {
 
   if (titleEl) {
     titleEl.textContent = day3SelectedKey
-      ? `${day3ComparisonData.strategies[day3SelectedKey].label} vs Benchmark — Full Universe (Test Period)`
-      : "MLP vs LSTM vs Equal-Weight vs My MLP vs My LSTM — Full Universe (Test Period)";
+      ? `${day3GraphLabel(day3ComparisonData.strategies[day3SelectedKey].label)} vs Benchmark — Full Universe (Test Period)`
+      : "MLP vs LSTM vs Equal-Weight vs MLP vs LSTM — Full Universe (Test Period)";
   }
   if (showAllBtn) {
     showAllBtn.style.display = day3SelectedKey ? "" : "none";
@@ -879,7 +901,7 @@ function renderDay3RankingTable(ranking) {
   tbody.innerHTML = ranking
     .map((row, index) => `<tr data-key="${row.key}" style="cursor:pointer;">
         <td>${index + 1}${index === 0 ? ' <span class="badge badge-yes">BEST</span>' : ""}</td>
-        <td>${row.label}</td>
+        <td>${day3TableLabel(row.label)}</td>
         <td>${Number(row.final_value).toLocaleString(undefined, { maximumFractionDigits: 0 })} EGP</td>
         <td>${formatBadge(row.beat_benchmark)}</td>
       </tr>`)
