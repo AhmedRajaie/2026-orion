@@ -1,11 +1,16 @@
 import json
 import os
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from google import genai
+from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = ROOT / "src"
@@ -22,6 +27,14 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 os.chdir(ROOT)
+load_dotenv(ROOT / ".env")
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_CHAT_MODEL = "gemini-flash-latest"
+gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+
+NEWS_CACHE_TTL = timedelta(minutes=15)
+news_cache: dict[str, dict] = {}
 
 from tradinglab.backtester import run_backtest
 from tradinglab.data_feed import DataFeed
@@ -360,3 +373,88 @@ def get_day3_comparison():
         "strategies": strategies,
         "ranking": ranking,
     }
+
+
+class ChatRequest(BaseModel):
+    question: str
+    symbol: Optional[str] = None
+    universe: str = "small"
+
+
+def build_dashboard_context(symbol: Optional[str], universe: str) -> dict:
+    """Gathers real, currently-available dashboard data by calling the same
+    functions the /strategy, /strategies, and /day3-comparison endpoints use,
+    so the chat model is grounded in numbers that actually exist."""
+    if universe not in feeds:
+        universe = "small"
+
+    context: dict = {
+        "universe": universe,
+        "available_symbols": feeds[universe].symbols,
+    }
+
+    if symbol and symbol in feeds[universe].symbols:
+        strategy = get_strategy(symbol, universe=universe)
+        context["selected_symbol"] = symbol
+        context["selected_symbol_strategy"] = {
+            "latest_date": strategy["dates"][-1] if strategy["dates"] else None,
+            "latest_close_price": strategy["close"][-1] if strategy["close"] else None,
+            "final_value": strategy["stats"]["final_value"],
+            "buy_count": strategy["stats"]["buy_count"],
+            "sell_count": strategy["stats"]["sell_count"],
+            "max_drawdown_pct": strategy["stats"]["max_drawdown_pct"],
+            "pnl": strategy["pnl"],
+            "return_pct": strategy["return_pct"],
+            "open_position": strategy["open_position"],
+            "current_shares": strategy["current_shares"],
+        }
+
+    strategies_perf = get_strategies(universe=universe)
+    context["strategy_comparison"] = {
+        key: {
+            "total_return": value["total_return"],
+            "sharpe": value["sharpe"],
+            "max_drawdown": value["max_drawdown"],
+        }
+        for key, value in strategies_perf.items()
+        if key not in ("dates", "benchmark")
+    }
+
+    day3 = get_day3_comparison()
+    context["day3_strategy_ranking"] = day3["ranking"]
+
+    now = datetime.utcnow()
+    fresh_news = {
+        sym: {"sentiment": entry["sentiment"], "summary": entry["summary"]}
+        for sym, entry in news_cache.items()
+        if now - entry["cached_at"] < NEWS_CACHE_TTL
+    }
+    context["news_sentiment"] = fresh_news if fresh_news else "No news sentiment has been fetched for any symbol yet."
+
+    return context
+
+
+@app.post("/chat")
+def chat(payload: ChatRequest):
+    if gemini_client is None:
+        raise HTTPException(status_code=503, detail="GEMINI_API_KEY is not configured on the server.")
+
+    context = build_dashboard_context(payload.symbol, payload.universe)
+
+    prompt = (
+        "You are a read-only assistant embedded in a trading dashboard. Answer the user's "
+        "question using ONLY the JSON data below, which reflects what is currently loaded in "
+        "the dashboard. Never invent, estimate, or infer any number that is not present in this "
+        "data. If the question cannot be answered from this data, say so plainly and briefly "
+        "explain what the user would need to select or load to get that answer. Keep answers to "
+        "1-3 sentences.\n\n"
+        f"DASHBOARD DATA:\n{json.dumps(context, default=str)}\n\n"
+        f"QUESTION: {payload.question}"
+    )
+
+    try:
+        response = gemini_client.models.generate_content(model=GEMINI_CHAT_MODEL, contents=prompt)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Chat model request failed: {exc}")
+
+    return {"answer": response.text}

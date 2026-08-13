@@ -189,6 +189,7 @@ function populateSymbolSelector(symbols) {
     option.value = "";
     select.appendChild(option);
     selectedSymbol = null;
+    syncSymbolDropdownUI();
     return;
   }
 
@@ -201,6 +202,7 @@ function populateSymbolSelector(symbols) {
 
   selectedSymbol = currentSelection;
   select.value = currentSelection;
+  syncSymbolDropdownUI();
 }
 
 function bindAssetSelector() {
@@ -212,6 +214,107 @@ function bindAssetSelector() {
     selectedRange = "all";
     updateRangeButtons();
     refreshDashboard();
+  });
+}
+
+function closeSymbolDropdown() {
+  const list = document.getElementById("symbolDropdownList");
+  const btn = document.getElementById("symbolDropdownBtn");
+  if (list) list.hidden = true;
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+function openSymbolDropdown() {
+  const list = document.getElementById("symbolDropdownList");
+  const btn = document.getElementById("symbolDropdownBtn");
+  if (list) list.hidden = false;
+  if (btn) btn.setAttribute("aria-expanded", "true");
+  const selectedItem = list && list.querySelector('li[aria-selected="true"]');
+  if (selectedItem) selectedItem.scrollIntoView({ block: "nearest" });
+}
+
+// The native <select> stays in the DOM (hidden) as the single source of truth for
+// the current symbol list/selection, so all existing selection logic (bindAssetSelector,
+// refreshDashboard) is untouched. This just mirrors its <option>s into a CSS-scrollable
+// <ul> so every option is actually reachable, since a native popup's internal scrolling
+// is OS-rendered and outside CSS's reach.
+function syncSymbolDropdownUI() {
+  const select = document.getElementById("symbolSelect");
+  const list = document.getElementById("symbolDropdownList");
+  const label = document.getElementById("symbolDropdownLabel");
+  if (!select || !list || !label) return;
+
+  list.innerHTML = "";
+  Array.from(select.options).forEach((option) => {
+    const item = document.createElement("li");
+    item.setAttribute("role", "option");
+    item.tabIndex = -1;
+    item.dataset.value = option.value;
+    item.textContent = option.textContent;
+    if (option.value === select.value) {
+      item.setAttribute("aria-selected", "true");
+    }
+    item.addEventListener("click", () => {
+      if (select.value !== option.value) {
+        select.value = option.value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      closeSymbolDropdown();
+    });
+    list.appendChild(item);
+  });
+
+  label.textContent = select.value || (select.options[0] ? select.options[0].textContent : "No symbols");
+}
+
+function bindSymbolDropdown() {
+  const btn = document.getElementById("symbolDropdownBtn");
+  const list = document.getElementById("symbolDropdownList");
+  if (!btn || !list) return;
+
+  btn.addEventListener("click", () => {
+    if (list.hidden) {
+      openSymbolDropdown();
+    } else {
+      closeSymbolDropdown();
+    }
+  });
+
+  btn.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openSymbolDropdown();
+      const first = list.querySelector('li[aria-selected="true"]') || list.querySelector("li");
+      if (first) first.focus();
+    }
+  });
+
+  list.addEventListener("keydown", (event) => {
+    const items = Array.from(list.querySelectorAll("li"));
+    const currentIndex = items.findIndex((item) => item === document.activeElement);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeSymbolDropdown();
+      btn.focus();
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      const next = items[Math.min(currentIndex + 1, items.length - 1)];
+      if (next) next.focus();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      const prev = items[Math.max(currentIndex - 1, 0)];
+      if (prev) prev.focus();
+    } else if (event.key === "Enter" && currentIndex >= 0) {
+      event.preventDefault();
+      items[currentIndex].click();
+      btn.focus();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#symbolDropdown")) {
+      closeSymbolDropdown();
+    }
   });
 }
 
@@ -372,13 +475,22 @@ function applyTimeRangeFilter() {
 
 async function checkHealth() {
   const statusEl = document.getElementById("status");
+  const dotEl = document.getElementById("statusDot");
   try {
     const response = await fetch(`${API}/health`);
     const data = await response.json();
     statusEl.textContent = "backend: " + data.status;
+    if (dotEl) {
+      dotEl.classList.remove("error");
+      dotEl.classList.add("ok");
+    }
     console.log("[checkHealth] ok:", data);
   } catch (err) {
     statusEl.textContent = "backend not reachable";
+    if (dotEl) {
+      dotEl.classList.remove("ok");
+      dotEl.classList.add("error");
+    }
     console.error("[checkHealth] failed:", err);
   }
 }
@@ -961,13 +1073,6 @@ async function refreshDashboard() {
   setPanelLoading("strategyPanel", true);
   setPanelLoading("statusControlsPanel", true);
   try {
-    const healthPromise = checkHealth();
-    const featuresPromise = loadFeaturesPanel();
-    const equityPromise = loadEquityChart();
-    const metricsPromise = loadMetrics();
-    const strategyPerfPromise = loadStrategyPerformance();
-    const day3Promise = loadDay3Comparison();
-
     setPanelError("statusControlsPanel", false);
     const universeResponse = await fetch(`${API}/universe${getUniverseQuery()}`);
     if (!universeResponse.ok) throw new Error(`/universe returned ${universeResponse.status}`);
@@ -979,6 +1084,13 @@ async function refreshDashboard() {
     } else if (!symbols.includes(selectedSymbol)) {
       selectedSymbol = symbols[0] || null;
     }
+
+    const healthPromise = checkHealth();
+    const featuresPromise = loadFeaturesPanel();
+    const equityPromise = loadEquityChart();
+    const metricsPromise = loadMetrics();
+    const strategyPerfPromise = loadStrategyPerformance();
+    const day3Promise = loadDay3Comparison();
 
     let priceChartPromise = Promise.resolve();
     if (selectedSymbol) {
@@ -1005,11 +1117,84 @@ async function refreshDashboard() {
   }
 }
 
+function appendChatMessage(role, text) {
+  const messages = document.getElementById("chatMessages");
+  if (!messages) return;
+  const bubble = document.createElement("div");
+  bubble.className = `chat-message ${role}`;
+  bubble.textContent = text;
+  messages.appendChild(bubble);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById("chatInput");
+  const sendBtn = document.getElementById("chatSendBtn");
+  if (!input) return;
+
+  const question = input.value.trim();
+  if (!question) return;
+
+  appendChatMessage("user", question);
+  input.value = "";
+  input.disabled = true;
+  if (sendBtn) sendBtn.disabled = true;
+
+  try {
+    const response = await fetch(`${API}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question,
+        symbol: selectedSymbol,
+        universe: selectedUniverse,
+      }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody.detail || `/chat returned ${response.status}`);
+    }
+    const data = await response.json();
+    appendChatMessage("assistant", data.answer);
+  } catch (err) {
+    console.error("[sendChatMessage] failed:", err);
+    appendChatMessage("assistant", "Sorry, I couldn't reach the chat backend. Check that GEMINI_API_KEY is configured and the server is running.");
+  } finally {
+    input.disabled = false;
+    if (sendBtn) sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+function bindChatPanel() {
+  const toggleBtn = document.getElementById("chatToggleBtn");
+  const section = document.getElementById("chatSection");
+  const sendBtn = document.getElementById("chatSendBtn");
+  const input = document.getElementById("chatInput");
+  if (!toggleBtn || !section) return;
+
+  toggleBtn.addEventListener("click", () => {
+    const isOpen = section.style.display !== "none";
+    section.style.display = isOpen ? "none" : "block";
+    toggleBtn.classList.toggle("active", !isOpen);
+    toggleBtn.setAttribute("aria-expanded", String(!isOpen));
+  });
+
+  if (sendBtn) sendBtn.addEventListener("click", sendChatMessage);
+  if (input) {
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") sendChatMessage();
+    });
+  }
+}
+
 bindUniverseToggle();
 bindTimeRangeToggle();
 bindAssetSelector();
+bindSymbolDropdown();
 bindStrategyControls();
 bindDay3Controls();
+bindChatPanel();
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".strategy-trade-tooltip")) {
     hideStrategyTradeTooltip();

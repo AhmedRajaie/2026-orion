@@ -123,10 +123,52 @@
 
     .status-row {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: center;
-      gap: 12px;
+      row-gap: 12px;
       flex-wrap: wrap;
+    }
+
+    .status-zone {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-zone + .status-zone {
+      border-left: 1px solid var(--panel-border);
+      padding-left: 16px;
+      margin-left: 16px;
+    }
+
+    .status-zone--stacked {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .control-micro-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .status-dot.ok { background: var(--accent-3); }
+    .status-dot.error { background: var(--accent-4); }
+
+    #statusControlsPanel {
+      padding: 24px;
     }
 
     .panel.is-loading {
@@ -185,25 +227,95 @@
     }
 
     .symbol-select {
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
       border: 1px solid rgba(148, 163, 184, 0.25);
-      background: #0f172a;
+      background-color: #0f172a;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 10px 6px;
       color: var(--text);
-      padding: 8px 12px;
+      padding: 9px 32px 9px 14px;
       border-radius: 999px;
-      min-width: 180px;
+      min-width: 100px;
+      width: auto;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background-color 0.2s ease;
+    }
+
+    .symbol-select:hover {
+      border-color: var(--accent);
+      background-color: rgba(96, 165, 250, 0.16);
+    }
+
+    button.symbol-select {
+      font: inherit;
+      display: inline-flex;
+      align-items: center;
+      text-align: left;
+    }
+
+    button.symbol-select[aria-expanded="true"] {
+      border-color: var(--accent);
+      background-color: rgba(96, 165, 250, 0.16);
+    }
+
+    #symbolSelect {
+      display: none;
+    }
+
+    .symbol-dropdown {
+      position: relative;
+    }
+
+    .symbol-dropdown-list {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      z-index: 30;
+      margin: 0;
+      padding: 6px;
+      list-style: none;
+      min-width: 100%;
+      max-height: 300px;
+      overflow-y: auto;
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      box-shadow: 0 16px 40px rgba(2, 6, 23, 0.45);
+    }
+
+    .symbol-dropdown-list[hidden] {
+      display: none;
+    }
+
+    .symbol-dropdown-list li {
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+
+    .symbol-dropdown-list li:hover,
+    .symbol-dropdown-list li.is-highlighted {
+      background: rgba(96, 165, 250, 0.16);
+    }
+
+    .symbol-dropdown-list li[aria-selected="true"] {
+      background: var(--accent);
+      color: #f8fafc;
+      font-weight: 600;
     }
 
     #status {
       font-family: "SFMono-Regular", Consolas, monospace;
       color: #cbd5e1;
       font-size: 13px;
-    }
-
-    .control-group {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
     }
 
     #universeToggle,
@@ -237,13 +349,117 @@
       color: #f8fafc;
     }
 
+    #universeToggle .universe-btn {
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+    }
+
+    #universeToggle .universe-btn.active {
+      transform: scale(1.05);
+      box-shadow: 0 4px 14px rgba(96, 165, 250, 0.35);
+    }
+
     .universe-btn:focus-visible,
     .range-btn:focus-visible,
     .symbol-select:focus-visible,
     #tradeSearchInput:focus-visible,
-    #startingCashInput:focus-visible {
+    #startingCashInput:focus-visible,
+    #chatInput:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: 2px;
+    }
+
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .icon-btn-row {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .icon-btn {
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: #0f172a;
+      color: var(--text);
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .icon-btn:hover {
+      border-color: var(--accent);
+      background: rgba(96, 165, 250, 0.16);
+    }
+
+    .icon-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .icon-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    #chatMessages {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding: 4px 2px 12px;
+    }
+
+    .chat-message {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .chat-message.user {
+      align-self: flex-end;
+      background: var(--accent);
+      color: #f8fafc;
+    }
+
+    .chat-message.assistant {
+      align-self: flex-start;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--panel-border);
+      color: #cbd5e1;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    #chatInput {
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      background: #0f172a;
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 999px;
+      flex: 1;
+      font-size: 13px;
+    }
+
+    .badge-negative {
+      background: rgba(251, 113, 133, 0.15);
+      color: var(--accent-4);
     }
 
     @keyframes skeleton-shimmer {
@@ -487,25 +703,55 @@
 <body>
   <div class="page-shell">
     <header class="page-header">
-      <h1>Trading Dashboard</h1>
-      <p class="page-subtitle">A simple view of price action, strategy signals, and portfolio performance.</p>
+      <div class="header-row">
+        <div>
+          <h1>Trading Dashboard</h1>
+          <p class="page-subtitle">A simple view of price action, strategy signals, and portfolio performance.</p>
+        </div>
+        <div class="icon-btn-row">
+          <button id="chatToggleBtn" type="button" class="icon-btn" aria-label="Open dashboard chat" aria-expanded="false" title="Dashboard chat">💬</button>
+        </div>
+      </div>
     </header>
+
+    <section class="section-group" id="chatSection" style="display:none;">
+      <div class="section-heading">Dashboard Chat</div>
+      <div id="chatPanel" class="panel panel--compact">
+        <div class="panel-title">Ask about what's on screen</div>
+        <div id="chatMessages"></div>
+        <div class="chat-input-row">
+          <input id="chatInput" type="text" placeholder="e.g. What is the MLP strategy's final value?" aria-label="Chat question" />
+          <button id="chatSendBtn" type="button" class="range-btn">Send</button>
+        </div>
+      </div>
+    </section>
 
     <section class="section-group">
       <div class="section-heading">Status & Controls</div>
       <div id="statusControlsPanel" class="panel panel--compact">
         <div class="status-row">
-          <div id="status">checking backend...</div>
-          <div class="control-group">
-            <strong>Universe:</strong>
+          <div class="status-zone">
+            <span id="statusDot" class="status-dot"></span>
+            <div id="status">checking backend...</div>
+          </div>
+          <div class="status-zone status-zone--stacked">
+            <div class="control-micro-label">Universe</div>
             <div id="universeToggle" role="group" aria-label="Universe selection">
               <button type="button" data-universe="small" class="universe-btn active">Small universe</button>
               <button type="button" data-universe="full" class="universe-btn">Full universe</button>
             </div>
-            <strong>Asset:</strong>
-            <select id="symbolSelect" class="symbol-select" aria-label="Asset selector">
-              <option value="">Loading symbols…</option>
-            </select>
+          </div>
+          <div class="status-zone status-zone--stacked">
+            <div class="control-micro-label">Asset</div>
+            <div class="symbol-dropdown" id="symbolDropdown">
+              <button type="button" id="symbolDropdownBtn" class="symbol-select" aria-haspopup="listbox" aria-expanded="false">
+                <span id="symbolDropdownLabel">Loading…</span>
+              </button>
+              <ul id="symbolDropdownList" class="symbol-dropdown-list" role="listbox" aria-label="Asset selector" hidden></ul>
+              <select id="symbolSelect" aria-hidden="true" tabindex="-1">
+                <option value="">Loading symbols…</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
