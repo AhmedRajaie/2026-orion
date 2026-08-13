@@ -128,22 +128,23 @@ def _get_lstm_strategy(symbol: str):
 
 
 def _build_strategies(symbol: str):
-    """Build the strategy list for a single-symbol comparison.
-    
-    Note: NN and LSTM strategies are only available for single-symbol analysis,
-    not for the 'ALL' (portfolio) case.
+    """Build the strategy list for a symbol or ALL comparison.
+
+    For the ALL case, we still include the NN and LSTM models by using the first
+    symbol in the universe as the model's training proxy. This keeps those
+    strategies visible in the portfolio view without breaking the full-universe
+    backtest logic.
     """
+    model_symbol = symbol if symbol != "ALL" else (feed.symbols[0] if feed.symbols else symbol)
+
     strategies = [
         ("SMA crossover", lambda obs: sma_crossover_weights(obs, 9, 20)),
         ("MPT window", mpt_window_strategy),
         ("TikTok contrarian", make_tiktok_guru_strategy(week_days=5)),
+        ("NN 5-day", _get_nn_strategy(model_symbol)),
+        ("LSTM 1-day", _get_lstm_strategy(model_symbol)),
     ]
-    
-    # NN and LSTM strategies only work with single symbols
-    if symbol != "ALL":
-        strategies.append(("NN 5-day", _get_nn_strategy(symbol)))
-        strategies.append(("LSTM 1-day", _get_lstm_strategy(symbol)))
-    
+
     return strategies
 
 
