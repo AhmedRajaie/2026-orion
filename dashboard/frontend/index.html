@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 
 <head>
@@ -10,11 +11,10 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>
-        EGX Trading Dashboard
-    </title>
+    <title>EGX Trading Dashboard</title>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 
     <style>
 
@@ -22,75 +22,121 @@
             box-sizing: border-box;
         }
 
+
         body {
+
             margin: 0;
+
             font-family:
                 Arial,
                 Helvetica,
                 sans-serif;
 
             background: #f4f6f8;
+
             color: #1f2937;
         }
 
+
         header {
+
             background: #111827;
+
             color: white;
+
             padding: 24px;
         }
 
+
         header h1 {
-            margin: 0 0 8px 0;
+
+            margin:
+                0 0 8px 0;
         }
 
+
         header p {
+
             margin: 0;
+
             opacity: 0.8;
         }
 
+
         .container {
+
             width: 94%;
+
             max-width: 1400px;
-            margin: 25px auto;
+
+            margin:
+                25px auto;
         }
 
+
         .toolbar {
+
             background: white;
+
             padding: 18px;
+
             border-radius: 12px;
+
             margin-bottom: 20px;
 
             display: flex;
+
             align-items: center;
+
             gap: 15px;
+
             flex-wrap: wrap;
         }
 
+
         button,
         select {
-            padding: 10px 14px;
+
+            padding:
+                10px 14px;
+
             border-radius: 8px;
-            border: 1px solid #d1d5db;
+
+            border:
+                1px solid #d1d5db;
+
             background: white;
+
             cursor: pointer;
         }
 
+
         button.active {
+
             background: #111827;
+
             color: white;
         }
 
+
         select {
+
             min-width: 150px;
         }
 
+
         .status {
+
             margin-left: auto;
+
             font-weight: bold;
         }
 
+
         .cards {
+
             display: grid;
+
             grid-template-columns:
                 repeat(
                     auto-fit,
@@ -98,142 +144,308 @@
                 );
 
             gap: 15px;
+
             margin-bottom: 20px;
         }
 
+
         .card {
+
             background: white;
+
             border-radius: 12px;
+
             padding: 20px;
+
             box-shadow:
                 0 2px 8px
                 rgba(0, 0, 0, 0.06);
         }
 
+
         .card-title {
+
             font-size: 14px;
+
             color: #6b7280;
+
             margin-bottom: 10px;
         }
 
+
         .card-value {
+
             font-size: 24px;
+
             font-weight: bold;
         }
 
+
         .section {
+
             background: white;
+
             border-radius: 12px;
+
             padding: 22px;
+
             margin-bottom: 22px;
+
             box-shadow:
                 0 2px 8px
                 rgba(0, 0, 0, 0.06);
         }
 
+
         .section h2 {
+
             margin-top: 0;
         }
 
+
+        .section h3 {
+
+            margin-top: 0;
+        }
+
+
         .chart-container {
+
             position: relative;
+
             height: 380px;
         }
 
-        .small-chart {
-            height: 320px;
-        }
 
         .two-columns {
+
             display: grid;
+
             grid-template-columns:
                 1fr 1fr;
 
             gap: 20px;
         }
 
-        .three-columns {
-            display: grid;
-            grid-template-columns:
-                repeat(3, 1fr);
-
-            gap: 20px;
-        }
 
         .strategy-grid {
+
             display: grid;
+
             grid-template-columns:
                 1fr 1fr;
 
             gap: 20px;
         }
 
+
         .strategy-card {
-            border: 1px solid #e5e7eb;
+
+            border:
+                1px solid #e5e7eb;
+
             border-radius: 10px;
+
             padding: 18px;
         }
 
+
         .strategy-card h3 {
+
             margin-top: 0;
         }
 
+
         .metric-row {
+
             display: flex;
-            justify-content: space-between;
+
+            justify-content:
+                space-between;
+
             padding: 8px 0;
-            border-bottom: 1px solid #f0f0f0;
+
+            border-bottom:
+                1px solid #f0f0f0;
         }
 
+
         .winner {
+
             margin-top: 20px;
+
             padding: 15px;
+
             border-radius: 8px;
+
             background: #f3f4f6;
+
             font-weight: bold;
         }
 
-        .mlp-header {
+
+        .ml-header {
+
             display: flex;
-            justify-content: space-between;
+
+            justify-content:
+                space-between;
+
             align-items: center;
+
             flex-wrap: wrap;
+
             gap: 15px;
         }
 
-        .mlp-status {
+
+        .ml-status {
+
             color: #6b7280;
+
+            font-weight: bold;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
+
+        .model-grid {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(
+                    auto-fit,
+                    minmax(180px, 1fr)
+                );
+
+            gap: 15px;
+        }
+
+
+        .model-card {
+
+            background: #ffffff;
+
+            border:
+                1px solid #e5e7eb;
+
+            border-radius: 12px;
+
+            padding: 22px;
+        }
+
+
+        .model-card-title {
+
+            color: #64748b;
+
+            font-size: 15px;
+
+            margin-bottom: 10px;
+        }
+
+
+        .model-card-value {
+
+            font-size: 27px;
+
+            font-weight: bold;
+        }
+
+
+        .portfolio-grid {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(
+                    auto-fit,
+                    minmax(240px, 1fr)
+                );
+
+            gap: 18px;
+        }
+
+
+        .portfolio-card {
+
+            border:
+                1px solid #e5e7eb;
+
+            border-radius: 12px;
+
+            padding: 24px;
+        }
+
+
+        .portfolio-card h3 {
+
+            margin-top: 0;
+
+            color: #64748b;
+
+            font-size: 17px;
+
+            font-weight: normal;
+        }
+
+
+        .portfolio-value {
+
+            font-size: 30px;
+
+            font-weight: bold;
+
             margin-top: 15px;
         }
 
+
+        table {
+
+            width: 100%;
+
+            border-collapse:
+                collapse;
+
+            margin-top: 15px;
+        }
+
+
         th,
         td {
+
             padding: 12px;
-            border: 1px solid #e5e7eb;
+
+            border:
+                1px solid #e5e7eb;
+
             text-align: center;
         }
 
+
         th {
-            background: #f3f4f6;
+
+            background:
+                #f3f4f6;
         }
+
 
         @media (max-width: 900px) {
 
             .two-columns,
-            .three-columns,
             .strategy-grid {
-                grid-template-columns: 1fr;
+
+                grid-template-columns:
+                    1fr;
             }
 
+
             .status {
+
                 margin-left: 0;
+
                 width: 100%;
             }
+
         }
 
     </style>
@@ -243,6 +455,7 @@
 
 <body>
 
+
 <header>
 
     <h1>
@@ -250,8 +463,10 @@
     </h1>
 
     <p>
-        Technical Indicators, Backtesting,
-        Strategy Comparison & Machine Learning
+        Technical Indicators,
+        Backtesting,
+        Strategy Comparison &
+        Machine Learning
     </p>
 
 </header>
@@ -273,21 +488,27 @@
             Small Universe
         </button>
 
+
         <button
             id="fullUniverse"
         >
             Full Universe
         </button>
 
+
         <label>
             Stock:
         </label>
 
+
         <select id="stockSelect">
+
             <option>
                 Loading...
             </option>
+
         </select>
+
 
         <div
             id="status"
@@ -304,6 +525,7 @@
     <!-- ================================================= -->
 
     <div class="cards">
+
 
         <div class="card">
 
@@ -409,27 +631,6 @@
 
 
     <!-- ================================================= -->
-    <!-- EQUITY -->
-    <!-- ================================================= -->
-
-    <div class="section">
-
-        <h2>
-            Base Strategy vs Benchmark
-        </h2>
-
-        <div class="chart-container">
-
-            <canvas
-                id="equityChart"
-            ></canvas>
-
-        </div>
-
-    </div>
-
-
-    <!-- ================================================= -->
     <!-- STRATEGY PERFORMANCE -->
     <!-- ================================================= -->
 
@@ -439,19 +640,19 @@
             Strategy Performance
         </h2>
 
+
         <div class="strategy-grid">
 
-
-            <!-- BASE -->
 
             <div class="strategy-card">
 
                 <h3>
-                    Base Strategy
-                    — SMA 9/20
+                    Base Strategy — SMA 9/20
                 </h3>
 
+
                 <div class="metric-row">
+
                     <span>
                         Final Value
                     </span>
@@ -459,9 +660,12 @@
                     <strong id="baseFinal">
                         -
                     </strong>
+
                 </div>
 
+
                 <div class="metric-row">
+
                     <span>
                         Total Return
                     </span>
@@ -469,9 +673,12 @@
                     <strong id="baseReturn">
                         -
                     </strong>
+
                 </div>
 
+
                 <div class="metric-row">
+
                     <span>
                         Max Drawdown
                     </span>
@@ -479,9 +686,12 @@
                     <strong id="baseDrawdown">
                         -
                     </strong>
+
                 </div>
 
+
                 <div class="metric-row">
+
                     <span>
                         Sharpe
                     </span>
@@ -489,9 +699,12 @@
                     <strong id="baseSharpe">
                         -
                     </strong>
+
                 </div>
 
+
                 <div class="metric-row">
+
                     <span>
                         Total Trades
                     </span>
@@ -499,21 +712,21 @@
                     <strong id="baseTrades">
                         -
                     </strong>
+
                 </div>
 
             </div>
 
 
-            <!-- NEW -->
-
             <div class="strategy-card">
 
                 <h3>
-                    New Strategy
-                    — SMA20 + Momentum
+                    New Strategy — SMA20 + Momentum
                 </h3>
 
+
                 <div class="metric-row">
+
                     <span>
                         Final Value
                     </span>
@@ -521,9 +734,12 @@
                     <strong id="newFinal">
                         -
                     </strong>
+
                 </div>
 
+
                 <div class="metric-row">
+
                     <span>
                         Total Return
                     </span>
@@ -531,9 +747,12 @@
                     <strong id="newReturn">
                         -
                     </strong>
+
                 </div>
 
+
                 <div class="metric-row">
+
                     <span>
                         Max Drawdown
                     </span>
@@ -541,9 +760,12 @@
                     <strong id="newDrawdown">
                         -
                     </strong>
+
                 </div>
 
+
                 <div class="metric-row">
+
                     <span>
                         Sharpe
                     </span>
@@ -551,9 +773,12 @@
                     <strong id="newSharpe">
                         -
                     </strong>
+
                 </div>
 
+
                 <div class="metric-row">
+
                     <span>
                         Total Trades
                     </span>
@@ -561,6 +786,7 @@
                     <strong id="newTrades">
                         -
                     </strong>
+
                 </div>
 
             </div>
@@ -621,49 +847,55 @@
 
 
     <!-- ================================================= -->
-    <!-- MLP RESULTS -->
+    <!-- LSTM MACHINE LEARNING -->
     <!-- ================================================= -->
 
     <div class="section">
 
-        <div class="mlp-header">
+
+        <div class="ml-header">
 
             <div>
 
                 <h2>
-                    Machine Learning — MLP Results
+                    Machine Learning — LSTM Results
                 </h2>
 
                 <p>
-                    MSE regression model
-                    predicting stock returns
+                    LSTM sequence model for stock
+                    return prediction and portfolio
+                    selection
                 </p>
 
             </div>
 
+
             <div
-                id="mlpStatus"
-                class="mlp-status"
+                id="lstmStatus"
+                class="ml-status"
             >
-                Loading MLP results...
+                Loading LSTM results...
             </div>
 
         </div>
 
 
-        <!-- MLP METRICS -->
+        <!-- ================================================= -->
+        <!-- LSTM MODEL INFORMATION -->
+        <!-- ================================================= -->
 
-        <div class="cards">
+        <div class="model-grid">
 
-            <div class="card">
 
-                <div class="card-title">
-                    ML Stock
+            <div class="model-card">
+
+                <div class="model-card-title">
+                    Model
                 </div>
 
                 <div
-                    id="mlpSymbol"
-                    class="card-value"
+                    id="lstmModel"
+                    class="model-card-value"
                 >
                     -
                 </div>
@@ -671,15 +903,15 @@
             </div>
 
 
-            <div class="card">
+            <div class="model-card">
 
-                <div class="card-title">
-                    Final Training MSE
+                <div class="model-card-title">
+                    Sequence Length
                 </div>
 
                 <div
-                    id="mlpTrainMSE"
-                    class="card-value"
+                    id="lstmSequence"
+                    class="model-card-value"
                 >
                     -
                 </div>
@@ -687,15 +919,63 @@
             </div>
 
 
-            <div class="card">
+            <div class="model-card">
 
-                <div class="card-title">
-                    Final Testing MSE
+                <div class="model-card-title">
+                    Top K
                 </div>
 
                 <div
-                    id="mlpTestMSE"
-                    class="card-value"
+                    id="lstmTopK"
+                    class="model-card-value"
+                >
+                    -
+                </div>
+
+            </div>
+
+
+            <div class="model-card">
+
+                <div class="model-card-title">
+                    Epochs
+                </div>
+
+                <div
+                    id="lstmEpochs"
+                    class="model-card-value"
+                >
+                    -
+                </div>
+
+            </div>
+
+
+            <div class="model-card">
+
+                <div class="model-card-title">
+                    Final Training Loss
+                </div>
+
+                <div
+                    id="lstmTrainLoss"
+                    class="model-card-value"
+                >
+                    -
+                </div>
+
+            </div>
+
+
+            <div class="model-card">
+
+                <div class="model-card-title">
+                    Final Testing Loss
+                </div>
+
+                <div
+                    id="lstmTestLoss"
+                    class="model-card-value"
                 >
                     -
                 </div>
@@ -705,18 +985,82 @@
         </div>
 
 
-        <!-- MLP LOSS -->
+        <!-- ================================================= -->
+        <!-- PORTFOLIO PERFORMANCE -->
+        <!-- ================================================= -->
+
+        <h2 style="margin-top: 30px;">
+            Model Portfolio Performance
+        </h2>
+
+
+        <div class="portfolio-grid">
+
+
+            <div class="portfolio-card">
+
+                <h3>
+                    LSTM Final Portfolio Value
+                </h3>
+
+                <div
+                    id="lstmFinalValue"
+                    class="portfolio-value"
+                >
+                    -
+                </div>
+
+            </div>
+
+
+            <div class="portfolio-card">
+
+                <h3>
+                    MLP Final Portfolio Value
+                </h3>
+
+                <div
+                    id="mlpFinalValue"
+                    class="portfolio-value"
+                >
+                    -
+                </div>
+
+            </div>
+
+
+            <div class="portfolio-card">
+
+                <h3>
+                    Benchmark Final Value
+                </h3>
+
+                <div
+                    id="benchmarkFinalValue"
+                    class="portfolio-value"
+                >
+                    -
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- PORTFOLIO CHART -->
+        <!-- ================================================= -->
 
         <div class="section">
 
             <h3>
-                Training vs Testing MSE
+                LSTM vs MLP vs Benchmark
             </h3>
 
             <div class="chart-container">
 
                 <canvas
-                    id="mlpLossChart"
+                    id="lstmPortfolioChart"
                 ></canvas>
 
             </div>
@@ -724,117 +1068,145 @@
         </div>
 
 
+        <!-- ================================================= -->
+        <!-- LSTM TRAINING PROGRESS -->
+        <!-- ================================================= -->
+
+        <div class="section">
+
+            <h3>
+                LSTM Training Progress
+            </h3>
+
+            <div class="chart-container">
+
+                <canvas
+                    id="lstmLossChart"
+                ></canvas>
+
+            </div>
+
+        </div>
+
+
+        <!-- ================================================= -->
         <!-- ACTUAL VS PREDICTED -->
+        <!-- ================================================= -->
 
-        <div class="section">
+        <!-- =====================================================
+     AI ASSISTANT
+====================================================== -->
 
-            <h3>
-                Actual Return vs Predicted Return
-            </h3>
+<section class="ai-assistant">
 
-            <div class="chart-container">
+    <div class="ai-header">
 
-                <canvas
-                    id="mlpPredictionChart"
-                ></canvas>
-
-            </div>
-
+        <div>
+            <h2>🤖 AI Assistant</h2>
+            <p>
+                Ask questions about the stock, LSTM, MLP,
+                predictions and dashboard.
+            </p>
         </div>
 
+    </div>
 
-        <!-- CONFUSION MATRIX -->
 
-        <div class="section">
+    <div id="aiMessages" class="ai-messages">
 
-            <h3>
-                UP / DOWN Direction Evaluation
-            </h3>
+        <div class="ai-message bot">
 
-            <p>
-                The MLP is trained with MSE to predict
-                returns. The confusion matrix is derived
-                afterward by converting positive returns
-                to UP and non-positive returns to DOWN.
-            </p>
-
-            <div class="chart-container">
-
-                <canvas
-                    id="mlpConfusionChart"
-                ></canvas>
-
+            <div class="message-icon">
+                🤖
             </div>
 
+            <div class="message-content">
+                <strong>AI Assistant</strong>
 
-            <table>
-
-                <thead>
-
-                    <tr>
-
-                        <th>
-                            Actual / Predicted
-                        </th>
-
-                        <th>
-                            DOWN
-                        </th>
-
-                        <th>
-                            UP
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-                <tbody>
-
-                    <tr>
-
-                        <th>
-                            DOWN
-                        </th>
-
-                        <td id="cm00">
-                            -
-                        </td>
-
-                        <td id="cm01">
-                            -
-                        </td>
-
-                    </tr>
-
-                    <tr>
-
-                        <th>
-                            UP
-                        </th>
-
-                        <td id="cm10">
-                            -
-                        </td>
-
-                        <td id="cm11">
-                            -
-                        </td>
-
-                    </tr>
-
-                </tbody>
-
-            </table>
+                <p>
+                    Hi! I can help you understand the
+                    dashboard, LSTM predictions, MLP results
+                    and strategy performance.
+                </p>
+            </div>
 
         </div>
 
     </div>
 
+
+    <div class="ai-input-area">
+
+        <input
+            type="text"
+            id="aiInput"
+            placeholder="Ask something about the dashboard..."
+            autocomplete="off"
+        >
+
+        <button
+            id="aiSendButton"
+            onclick="sendAIMessage()"
+        >
+            Send
+        </button>
+
+    </div>
+
+
+    <div class="ai-suggestions">
+
+        <button onclick="askSuggestion('What does the LSTM prediction mean?')">
+            What does the LSTM prediction mean?
+        </button>
+
+        <button onclick="askSuggestion('Compare the LSTM and MLP predictions.')">
+            Compare LSTM and MLP
+        </button>
+
+        <button onclick="askSuggestion('Summarize the current dashboard.')">
+            Summarize dashboard
+        </button>
+
+        <button onclick="askSuggestion('What are the main insights from the models?')">
+            Main insights
+        </button>
+
+    </div>
+
+</section>
+
+
+        <div class="section">
+
+            <h3>
+                LSTM Actual vs Predicted
+            </h3>
+
+            <p>
+                If prediction arrays are included in
+                <code>model_results.json</code>, they
+                will be displayed here.
+            </p>
+
+            <div class="chart-container">
+
+                <canvas
+                    id="lstmPredictionChart"
+                ></canvas>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
 </div>
 
 
 <script src="app.js"></script>
+
 
 </body>
 
