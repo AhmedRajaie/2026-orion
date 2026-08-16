@@ -46,7 +46,21 @@ async function drawPriceChartFor(symbol, smaWindow = 20) {
     // fetch backtest results (equity & trades)
     let back = null;
     try {
-      const b = await fetch(`${API}/backtest/${encodeURIComponent(symbol)}?initial=1000`);
+      // build commission-aware query params
+      function _commissionQueryFor(sym) {
+        const rate = parseFloat(document.getElementById('commissionRate')?.value || '0');
+        const applyAll = document.getElementById('commissionApplyAll')?.checked;
+        const params = new URLSearchParams();
+        params.set('initial', '1000');
+        if (!isNaN(rate) && rate > 0) {
+          params.set('commission_rate', String(rate));
+          if (applyAll) params.set('apply_commission_to_all', 'true');
+          else params.set('commission_symbol', sym);
+        }
+        return params.toString();
+      }
+      const q = _commissionQueryFor(symbol);
+      const b = await fetch(`${API}/backtest/${encodeURIComponent(symbol)}?${q}`);
       if (b.ok) back = await b.json();
     } catch (e) {
       console.warn('failed to fetch backtest', e);
@@ -394,6 +408,133 @@ function exportBacktestCSV(back) {
   URL.revokeObjectURL(url);
 }
 
+async function fetchAndRenderModelCompare() {
+  try {
+    const r = await fetch(`${API}/compare`);
+    if (!r.ok) return;
+    const j = await r.json();
+    const el = document.getElementById('modelCompareContent');
+    if (!el) return;
+    const mlp = j.mlp;
+    const lstm = j.lstm;
+    if ((mlp == null) && (lstm == null)) {
+      el.textContent = 'No model compare data available.';
+      return;
+    }
+    // If one missing, show the available one
+    const entries = [];
+    if (mlp != null) entries.push({name: 'MLP', val: Number(mlp), color: '#60a5fa'});
+    if (lstm != null) entries.push({name: 'LSTM', val: Number(lstm), color: '#a78bfa'});
+    const max = Math.max(...entries.map(e => e.val));
+    const html = entries.map(e => {
+      const pct = max > 0 ? Math.round((1 - e.val / max) * 100) : 50;
+      return `
+        <div style="margin-top:8px;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;"><span>${e.name}</span><span>${e.val.toFixed(6)}</span></div>
+          <div style="background:#071025;border-radius:6px;height:12px;">
+            <div style="width:${pct}%;height:12px;background:${e.color};border-radius:6px;"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    el.innerHTML = html;
+  } catch (e) {
+    console.warn('failed to fetch model compare', e);
+  }
+}
+
+// Commission helper and panel fetch/render functions (MLP/LSTM/loss)
+function _getCommissionQueryFor(sym) {
+  const rate = parseFloat(document.getElementById('commissionRate')?.value || '0');
+  const applyAll = document.getElementById('commissionApplyAll')?.checked;
+  const params = new URLSearchParams();
+  params.set('initial', '1000');
+  if (!isNaN(rate) && rate > 0) {
+    params.set('commission_rate', String(rate));
+    if (applyAll) params.set('apply_commission_to_all', 'true');
+    else params.set('commission_symbol', sym);
+  }
+  return params.toString();
+}
+
+let lossChartInstance = null;
+async function fetchAndRenderLoss() {
+  try {
+    const r = await fetch(`${API}/loss`);
+    if (!r.ok) {
+      document.getElementById('lossContent').textContent = 'No loss data available.';
+      return;
+    }
+    const j = await r.json();
+    const el = document.getElementById('lossContent');
+    if (!el) return;
+    // create/replace canvas
+    el.innerHTML = '';
+    const c = document.createElement('canvas');
+    c.width = 800; c.height = 220; c.style.width = '100%'; c.style.height = '220px';
+    el.appendChild(c);
+    const ctx = c.getContext('2d');
+    if (lossChartInstance) lossChartInstance.destroy();
+    const train = j.train || [];
+    const test = j.test || [];
+    const epochs = train.map((_, i) => i+1);
+    lossChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: { labels: epochs, datasets: [
+        { label: 'Train loss', data: train, borderColor: '#60a5fa', backgroundColor:'rgba(96,165,250,0.06)', pointRadius:0 },
+        { label: 'Test loss', data: test, borderColor: '#a78bfa', backgroundColor:'rgba(167,139,250,0.04)', pointRadius:0 }
+      ]},
+      options: { plugins:{legend:{labels:{color:'#cbd5e1'}}}, scales:{x:{ticks:{color:'#cbd5e1'}}, y:{ticks:{color:'#cbd5e1'}}}, maintainAspectRatio:false }
+    });
+  } catch (e) {
+    console.warn('failed to fetch loss', e);
+  }
+}
+
+let mlpChartInstance = null;
+async function fetchAndRenderMLP() {
+  try {
+    const r = await fetch(`${API}/mlp`);
+    if (!r.ok) {
+      const el = document.getElementById('mlpPanel'); if (el) { el.style.opacity = '0.8'; }
+      return;
+    }
+    const j = await r.json();
+    const c = document.getElementById('mlpChart');
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    if (mlpChartInstance) mlpChartInstance.destroy();
+    const portfolio = j.portfolio || j.portfolio || [];
+    const benchmark = j.benchmark || j.benchmark || [];
+    const labels = portfolio.map((_,i) => i+1);
+    mlpChartInstance = new Chart(ctx, { type:'line', data:{ labels, datasets:[ {label:'MLP portfolio',data:portfolio,borderColor:'#34d399',pointRadius:0,fill:false},{label:'Benchmark',data:benchmark,borderColor:'#60a5fa',pointRadius:0,fill:false} ]}, options:{scales:{x:{ticks:{color:'#cbd5e1'}}, y:{ticks:{color:'#cbd5e1'}}},plugins:{legend:{labels:{color:'#cbd5e1'}}},maintainAspectRatio:false} });
+  } catch (e) {
+    console.warn('failed to fetch mlp equity', e);
+  }
+}
+
+let lstmChartInstance = null;
+async function fetchAndRenderLSTM() {
+  try {
+    const r = await fetch(`${API}/lstm`);
+    if (!r.ok) {
+      const el = document.getElementById('lstmPanel'); if (el) { el.style.opacity = '0.8'; }
+      return;
+    }
+    const j = await r.json();
+    const c = document.getElementById('lstmChart');
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    if (lstmChartInstance) lstmChartInstance.destroy();
+    const portfolio = j.portfolio || j.portfolio || [];
+    const benchmark = j.benchmark || j.benchmark || [];
+    const labels = portfolio.map((_,i) => i+1);
+    lstmChartInstance = new Chart(ctx, { type:'line', data:{ labels, datasets:[ {label:'LSTM portfolio',data:portfolio,borderColor:'#a78bfa',pointRadius:0,fill:false},{label:'Benchmark',data:benchmark,borderColor:'#60a5fa',pointRadius:0,fill:false} ]}, options:{scales:{x:{ticks:{color:'#cbd5e1'}}, y:{ticks:{color:'#cbd5e1'}}},plugins:{legend:{labels:{color:'#cbd5e1'}}},maintainAspectRatio:false} });
+  } catch (e) {
+    console.warn('failed to fetch lstm equity', e);
+  }
+}
+
 async function initPrices() {
   try {
     const u = await fetch(`${API}/universe`);
@@ -406,6 +547,20 @@ async function initPrices() {
     renderSymbolControls(syms, symbol);
     document.getElementById('status').textContent = `backend: ok — ${symbol}`;
     await drawPriceChartFor(symbol);
+    // load model comparison panel
+    fetchAndRenderModelCompare();
+    // load week2 panels (loss, mlp, lstm)
+    fetchAndRenderLoss();
+    fetchAndRenderMLP();
+    fetchAndRenderLSTM();
+
+    // re-run backtest when commission inputs change
+    document.getElementById('commissionRate')?.addEventListener('change', () => {
+      const s = document.getElementById('symbolSelect').value; if (s) drawPriceChartFor(s);
+    });
+    document.getElementById('commissionApplyAll')?.addEventListener('change', () => {
+      const s = document.getElementById('symbolSelect').value; if (s) drawPriceChartFor(s);
+    });
   } catch (e) {
     console.error(e);
   }

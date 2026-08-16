@@ -17,6 +17,16 @@
     <label for="symbolFilter">Filter symbols:</label>
     <input id="symbolFilter" type="text" placeholder="Type to filter symbols" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:1px solid #334155;background:#090f1a;color:#e6edf3;" />
     <select id="symbolSelect" style="width:100%;margin-top:12px;padding:8px;border-radius:8px;border:1px solid #334155;background:#090f1a;color:#e6edf3;"></select>
+
+    <!-- Commission control: choose commission rate and whether to apply to all symbols or selected only -->
+    <div style="margin-top:12px;">
+      <label for="commissionRate">Commission rate (decimal, e.g. 0.001 = 0.1%):</label>
+      <input id="commissionRate" type="number" step="0.0001" min="0" value="0" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:1px solid #334155;background:#090f1a;color:#e6edf3;" />
+      <div style="margin-top:8px;display:flex;gap:12px;align-items:center;">
+        <label style="display:flex;align-items:center;color:#cbd5e1;"><input id="commissionApplyAll" type="checkbox" checked style="margin-right:8px;">Apply commission to all symbols</label>
+        <span style="color:#64748b;font-size:13px;">(If unchecked, commission applies only to the selected symbol)</span>
+      </div>
+    </div>
   </div>
   <div class="panel" id="metrics">
     <strong>Base strategy summary</strong>
@@ -29,6 +39,31 @@
       <canvas id="strategyChart" width="800" height="300" style="width:100%;height:320px;"></canvas>
     </div>
   </div>
+
+  <div class="panel" id="modelComparePanel">
+    <strong>MLP vs LSTM (test loss — lower is better)</strong>
+    <div id="modelCompareContent" style="margin-top:8px;color:#cbd5e1;">Model comparison not loaded</div>
+  </div>
+
+  <div class="panel" id="lossPanel">
+    <strong>Training vs Test loss (mind the gap)</strong>
+    <div id="lossContent" style="margin-top:8px;color:#cbd5e1;">Loss not loaded</div>
+  </div>
+
+  <div class="panel" id="mlpPanel">
+    <strong>MLP equity (prediction → portfolio)</strong>
+    <div style="margin-top:12px;">
+      <canvas id="mlpChart" width="800" height="200" style="width:100%;height:220px;"></canvas>
+    </div>
+  </div>
+
+  <div class="panel" id="lstmPanel">
+    <strong>LSTM equity (sequence model)</strong>
+    <div style="margin-top:12px;">
+      <canvas id="lstmChart" width="800" height="200" style="width:100%;height:220px;"></canvas>
+    </div>
+  </div>
+
   <div class="panel" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
     <div>
       <button id="exportCsvBtn" style="padding:8px 12px;border-radius:8px;border:none;background:#2563eb;color:white;cursor:pointer;">Export backtest CSV</button>
