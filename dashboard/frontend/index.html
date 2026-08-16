@@ -97,6 +97,15 @@
 
     .trade-log-scroll { max-height: 420px; overflow-y: auto; }
 
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    @media (max-width: 1000px) {
+      .comparison-grid { grid-template-columns: 1fr; }
+    }
+
     /* --- News panel --- */
     #newsSummary { color: #c7d1e0; font-size: 14px; line-height: 1.5; }
     #newsHeadlines { margin: 0; padding-left: 20px; font-size: 13px; color: #8b98a9; }
@@ -194,16 +203,21 @@
     <h2>Strategy Performance Comparison</h2>
     <div class="subtitle" id="comparisonSubtitle" style="margin-bottom:16px;"></div>
 
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+    <div class="comparison-grid">
       <div>
-        <h3 style="font-size:14px; color:#c7d1e0; margin-bottom:10px;">Base — SMA 9/20 Crossover</h3>
+        <h3 style="font-size:14px; color:#c7d1e0; margin-bottom:10px;">SMA 9/20 Crossover</h3>
         <div class="stats-grid" id="baseStatsGrid" style="margin-bottom:14px;"></div>
         <canvas id="baseCompChart"></canvas>
       </div>
       <div>
-        <h3 style="font-size:14px; color:#c7d1e0; margin-bottom:10px;">New — Weekly Threshold</h3>
+        <h3 style="font-size:14px; color:#c7d1e0; margin-bottom:10px;">Weekly Threshold</h3>
         <div class="stats-grid" id="newStatsGrid" style="margin-bottom:14px;"></div>
         <canvas id="newCompChart"></canvas>
+      </div>
+      <div>
+        <h3 style="font-size:14px; color:#c7d1e0; margin-bottom:10px;">TikTok Guru (proportional tilt)</h3>
+        <div class="stats-grid" id="tiktokStatsGrid" style="margin-bottom:14px;"></div>
+        <canvas id="tiktokCompChart"></canvas>
       </div>
     </div>
   </div>

@@ -111,9 +111,6 @@ def get_backtest(symbol: str, fast: int = 9, slow: int = 20, initial_capital: fl
         peak = max(peak, v)
         running_max.append(peak)
     drawdowns = [(v - p) / p for v, p in zip(portfolio, running_max)]
-    # abs() keeps the sign convention consistent with every other panel on the
-    # dashboard: max drawdown is always reported as a positive magnitude
-    # (bigger number = worse), never a signed negative percentage.
     max_drawdown_pct = abs(min(drawdowns))
 
     return {
@@ -140,6 +137,7 @@ from tradinglab.backtester import run_backtest
 from tradinglab.strategies.sma import sma_crossover_weights
 from tradinglab.metrics import total_return, max_drawdown
 from .strategy_new import run_universe_weekly_threshold
+from .strategy_tiktok import make_tiktok_guru_strategy
 
 COMPARISON_UNIVERSE = ['COMI', 'HRHO', 'TMGH', 'SWDY', 'FWRY', 'ABUK']
 COMPARISON_CAPITAL = 1000.0
@@ -149,8 +147,8 @@ COMPARISON_CAPITAL = 1000.0
 def get_strategy_comparison():
     comp_feed = DataFeed.from_dir(str(REPO_ROOT / "data" / "egx"), symbols=COMPARISON_UNIVERSE)
     sim = PortfolioSimulator(comp_feed, commission=0.005)
-    base_result = run_backtest(sim, lambda o: sma_crossover_weights(o, 9, 20), lookback=30)
 
+    base_result = run_backtest(sim, lambda o: sma_crossover_weights(o, 9, 20), lookback=30)
     base_dates = [str(d)[:10] for d in base_result["dates"]]
     base_equity = (base_result["portfolio"] * COMPARISON_CAPITAL).tolist()
 
@@ -160,6 +158,12 @@ def get_strategy_comparison():
         min_date=base_dates[0], max_date=base_dates[-1]
     )
     new_returns = new_portfolio_equity.pct_change().dropna()
+
+    # TikTok guru strategy — same universe, same simulator, same real backtester,
+    # so dates line up with base_dates automatically (no manual date filtering needed).
+    tiktok_result = run_backtest(sim, make_tiktok_guru_strategy(week_days=5), lookback=30)
+    tiktok_dates = [str(d)[:10] for d in tiktok_result["dates"]]
+    tiktok_equity = (tiktok_result["portfolio"] * COMPARISON_CAPITAL).tolist()
 
     return {
         "universe": COMPARISON_UNIVERSE,
@@ -178,6 +182,14 @@ def get_strategy_comparison():
             "total_return_pct": total_return(new_returns) * 100,
             "max_drawdown_pct": max_drawdown(new_returns) * 100,
             "final_value": float(new_portfolio_equity.iloc[-1]),
+        },
+        "tiktok": {
+            "name": "TikTok Guru (proportional weekly tilt)",
+            "dates": tiktok_dates,
+            "equity": tiktok_equity,
+            "total_return_pct": total_return(tiktok_result["portfolio_returns"]) * 100,
+            "max_drawdown_pct": max_drawdown(tiktok_result["portfolio_returns"]) * 100,
+            "final_value": tiktok_equity[-1],
         },
     }
 
@@ -224,10 +236,12 @@ def build_dashboard_context(symbol: str | None = None) -> str:
         comp = get_strategy_comparison()
         lines.append(
             f"Strategy comparison (universe {', '.join(comp['universe'])}): "
-            f"base SMA crossover total return {comp['base']['total_return_pct']:.2f}% "
+            f"SMA crossover total return {comp['base']['total_return_pct']:.2f}% "
             f"(max drawdown {comp['base']['max_drawdown_pct']:.2f}%); "
-            f"new weekly-threshold strategy total return {comp['new']['total_return_pct']:.2f}% "
-            f"(max drawdown {comp['new']['max_drawdown_pct']:.2f}%)."
+            f"weekly-threshold strategy total return {comp['new']['total_return_pct']:.2f}% "
+            f"(max drawdown {comp['new']['max_drawdown_pct']:.2f}%); "
+            f"TikTok guru strategy total return {comp['tiktok']['total_return_pct']:.2f}% "
+            f"(max drawdown {comp['tiktok']['max_drawdown_pct']:.2f}%)."
         )
     except Exception:
         pass

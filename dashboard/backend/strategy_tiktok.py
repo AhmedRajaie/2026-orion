@@ -1,10 +1,5 @@
+"""Ported from week1/06-tiktok-strategy/tiktok_strategy.py — algorithm unchanged."""
 import numpy as np
-import matplotlib.pyplot as plt
-from tradinglab.data_feed import DataFeed
-from tradinglab.simulator import PortfolioSimulator
-from tradinglab.backtester import run_backtest
-from tradinglab.report import report
-from tradinglab.strategies.sma import sma_crossover_weights
 
 
 def make_tiktok_guru_strategy(week_days=5, sensitivity=1.0):
@@ -48,14 +43,12 @@ def make_tiktok_guru_strategy(week_days=5, sensitivity=1.0):
             current = np.ones(n_assets) / n_assets
             state["weights"] = current
 
-        # act on a fresh signal once every `week_days` days, not every day --
-        # see the bug note above for why this matters
         if state["day_count"] % week_days == 0:
             daily_returns = observation[:, -week_days:, 0]
             return_nd = np.prod(1 + daily_returns, axis=1) - 1
             tilt_pct = -return_nd * sensitivity
             new_weights = current * (1 + tilt_pct)
-            new_weights = np.clip(new_weights, 0, None)   # long-only
+            new_weights = np.clip(new_weights, 0, None)
             total = new_weights.sum()
             current = np.zeros(n_assets) if total <= 0 else new_weights / total
             state["weights"] = current
@@ -64,31 +57,3 @@ def make_tiktok_guru_strategy(week_days=5, sensitivity=1.0):
         return state["weights"]
 
     return strategy
-
-
-COMMISSION = 0.005
-
-if __name__ == "__main__":
-    feed = DataFeed.from_dir('data/egx')   # full 34-stock universe
-
-    sim_eq = PortfolioSimulator(feed, benchmark='equal_weight', commission=COMMISSION)
-    result_tiktok = run_backtest(sim_eq, make_tiktok_guru_strategy(week_days=5), lookback=30)
-
-    sim_egx = PortfolioSimulator(feed, benchmark='egx30', commission=COMMISSION)
-    result_sma = run_backtest(sim_egx, lambda o: sma_crossover_weights(o, 9, 20), lookback=30)
-
-    dates = result_tiktok['dates']
-    plt.figure(figsize=(11, 6))
-    plt.plot(dates, result_tiktok['portfolio'] * 1000, label='TikTok Strategy', linewidth=1.6)
-    plt.plot(dates, result_sma['portfolio'] * 1000, label='SMA Crossover (9,20)', linewidth=1.6)
-    plt.plot(dates, result_tiktok['benchmark'] * 1000, label='Equal Weight', linewidth=1.4, linestyle='--')
-    plt.plot(dates, result_sma['benchmark'] * 1000, label='EGX30', linewidth=1.4, linestyle='--')
-
-    plt.title('Everything, One Chart — Growth of 1,000 EGP')
-    plt.ylabel('Portfolio value (EGP)')
-    plt.legend()
-    plt.grid(alpha=0.3)
-    plt.gcf().autofmt_xdate()
-    plt.tight_layout()
-    plt.show()
-    

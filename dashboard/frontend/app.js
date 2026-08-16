@@ -117,7 +117,7 @@ function getParams() {
   return { fast, slow };
 }
 
-let baseCompChart, newCompChart;
+let baseCompChart, newCompChart, tiktokCompChart;
 
 function renderComparisonStats(containerId, data) {
   const grid = document.getElementById(containerId);
@@ -152,15 +152,18 @@ async function loadStrategyComparison() {
   const data = await fetch(`${API}/strategy-comparison`).then(r => r.json());
 
   document.getElementById("comparisonSubtitle").textContent =
-    `Universe: ${data.universe.join(", ")} — same date range and starting capital for both strategies`;
+    `Universe: ${data.universe.join(", ")} — same date range and starting capital for all three strategies`;
 
   renderComparisonStats("baseStatsGrid", data.base);
   renderComparisonStats("newStatsGrid", data.new);
+  renderComparisonStats("tiktokStatsGrid", data.tiktok);
 
   if (baseCompChart) baseCompChart.destroy();
   if (newCompChart) newCompChart.destroy();
+  if (tiktokCompChart) tiktokCompChart.destroy();
   baseCompChart = renderComparisonChart("baseCompChart", data.base, "#38bdf8");
   newCompChart = renderComparisonChart("newCompChart", data.new, "#4ade80");
+  tiktokCompChart = renderComparisonChart("tiktokCompChart", data.tiktok, "#fbbf24");
 }
 
 let compareChart;
