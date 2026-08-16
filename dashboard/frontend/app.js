@@ -1,4 +1,4 @@
-const API = "http://localhost:8001";  // ← changed from 8000 to match your running server
+const API = "http://localhost:8001";  // update to 8000 once that port's old process clears
 let priceChart, equityChart;
 
 async function checkHealth() {
@@ -163,6 +163,39 @@ async function loadStrategyComparison() {
   newCompChart = renderComparisonChart("newCompChart", data.new, "#4ade80");
 }
 
+let compareChart;
+
+async function loadModelCompare() {
+  let data;
+  try {
+    const r = await fetch(`${API}/compare`);
+    if (!r.ok) throw new Error("not found");
+    data = await r.json();
+  } catch (e) {
+    console.warn("model_compare.json not available yet — run the Day 3 notebook first");
+    return;
+  }
+
+  const ctx = document.getElementById("compareChart").getContext("2d");
+  if (compareChart) compareChart.destroy();
+  compareChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: ["MLP", "LSTM"],
+      datasets: [{
+        label: "Test loss",
+        data: [data.mlp_test_loss, data.lstm_test_loss],
+        backgroundColor: ["#38bdf8", "#f87171"]
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+}
+
 (async function init() {
   await checkHealth();
   const firstSymbol = await loadUniverse();
@@ -175,4 +208,5 @@ async function loadStrategyComparison() {
   const { fast, slow } = getParams();
   await loadBacktest(firstSymbol, fast, slow);
   await loadStrategyComparison();
+  await loadModelCompare();
 })();

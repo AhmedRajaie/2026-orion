@@ -1,0 +1,9 @@
+{
+  "mlp_test_loss": 0.000581,
+  "lstm_test_loss": 0.000587,
+  "mlp_ic": 0.015,
+  "lstm_ic": -0.0078,
+  "mlp_final_value": 2108.95,
+  "lstm_final_value": 1303.91,
+  "benchmark_final_value": 1567.2
+}

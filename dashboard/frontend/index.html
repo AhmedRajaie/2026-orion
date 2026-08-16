@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8"/>
   <title>Trading Dashboard</title>
@@ -21,6 +21,7 @@
       align-items: center;
       gap: 12px;
       margin-bottom: 20px;
+      flex-wrap: wrap;
     }
     select {
       background: #111a2b;
@@ -79,16 +80,16 @@
   <div class="subtitle">MA9 / MA20 crossover strategy backtest</div>
 
   <div class="toolbar">
-  <div class="panel" id="status" style="margin:0; padding:10px 16px;">connecting…</div>
-  <select id="symbolSelect"></select>
-  <label style="font-size:13px; color:#8b98a9;">Fast MA
-    <input type="number" id="fastInput" value="9" min="1" max="200" style="width:60px; margin-left:6px; background:#111a2b; color:#e6edf3; border:1px solid #223049; border-radius:6px; padding:6px;">
-  </label>
-  <label style="font-size:13px; color:#8b98a9;">Slow MA
-    <input type="number" id="slowInput" value="20" min="2" max="400" style="width:60px; margin-left:6px; background:#111a2b; color:#e6edf3; border:1px solid #223049; border-radius:6px; padding:6px;">
-  </label>
-  <button id="applyBtn" style="background:#38bdf8; color:#0b1220; border:none; border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">Apply</button>
-</div>
+    <div class="panel" id="status" style="margin:0; padding:10px 16px;">connecting…</div>
+    <select id="symbolSelect" aria-label="Select stock symbol"></select>
+    <label style="font-size:13px; color:#8b98a9;">Fast MA
+      <input type="number" id="fastInput" value="9" min="1" max="200" style="width:60px; margin-left:6px; background:#111a2b; color:#e6edf3; border:1px solid #223049; border-radius:6px; padding:6px;">
+    </label>
+    <label style="font-size:13px; color:#8b98a9;">Slow MA
+      <input type="number" id="slowInput" value="20" min="2" max="400" style="width:60px; margin-left:6px; background:#111a2b; color:#e6edf3; border:1px solid #223049; border-radius:6px; padding:6px;">
+    </label>
+    <button id="applyBtn" style="background:#38bdf8; color:#0b1220; border:none; border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">Apply</button>
+  </div>
 
   <div class="stats-grid" id="statsGrid"></div>
 
@@ -126,6 +127,11 @@
         <canvas id="newCompChart"></canvas>
       </div>
     </div>
+  </div>
+
+  <div class="panel">
+    <h2>MLP vs LSTM (test loss — lower is better)</h2>
+    <canvas id="compareChart" role="img" aria-label="Bar chart comparing MLP and LSTM test loss"></canvas>
   </div>
 
   <script src="app.js"></script>

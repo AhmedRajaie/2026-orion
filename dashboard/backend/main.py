@@ -16,20 +16,25 @@ def health():
 from tradinglab.data_feed import DataFeed
 from fastapi import HTTPException
 from pathlib import Path
+import json
 
-def find_repo_root(marker="data"):
+
+def find_repo_root():
     p = Path(__file__).resolve()
     for parent in p.parents:
-        if (parent / marker).exists():
+        if (parent / "data" / "egx").exists():
             return parent
-    raise FileNotFoundError("Couldn't find repo root containing 'data/'")
+    raise FileNotFoundError("Couldn't find repo root containing 'data/egx/'")
+
 
 REPO_ROOT = find_repo_root()
 feed = DataFeed.from_dir(str(REPO_ROOT / "data" / "egx"))
 
+
 @app.get("/universe")
 def get_universe():
     return feed.symbols
+
 
 @app.get("/prices/{symbol}")
 def get_prices(symbol: str):
@@ -39,6 +44,8 @@ def get_prices(symbol: str):
     dates = [str(d)[:10] for d in feed.dates]
     close = feed.close[:, idx].tolist()
     return {"dates": dates, "close": close}
+
+
 @app.get("/backtest/{symbol}")
 def get_backtest(symbol: str, fast: int = 9, slow: int = 20, initial_capital: float = 1000):
     if symbol not in feed.symbols:
@@ -113,6 +120,8 @@ def get_backtest(symbol: str, fast: int = 9, slow: int = 20, initial_capital: fl
         "buy_count": buy_count,
         "sell_count": sell_count,
     }
+
+
 from tradinglab.simulator import PortfolioSimulator
 from tradinglab.backtester import run_backtest
 from tradinglab.strategies.sma import sma_crossover_weights
@@ -121,6 +130,8 @@ from .strategy_new import run_universe_weekly_threshold  # if this errors, try: 
 
 COMPARISON_UNIVERSE = ['COMI', 'HRHO', 'TMGH', 'SWDY', 'FWRY', 'ABUK']
 COMPARISON_CAPITAL = 1000.0
+
+
 @app.get("/strategy-comparison")
 def get_strategy_comparison():
     comp_feed = DataFeed.from_dir(str(REPO_ROOT / "data" / "egx"), symbols=COMPARISON_UNIVERSE)
@@ -156,3 +167,11 @@ def get_strategy_comparison():
             "final_value": float(new_portfolio_equity.iloc[-1]),
         },
     }
+
+
+@app.get("/compare")
+def get_compare():
+    path = REPO_ROOT / "dashboard" / "data" / "model_compare.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="model_compare.json not found — run the Day 3 notebook first")
+    return json.loads(path.read_text())
