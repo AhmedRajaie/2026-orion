@@ -187,6 +187,14 @@ def get_compare():
     return json.loads(path.read_text())
 
 
+@app.get("/leaderboard")
+def get_leaderboard():
+    path = REPO_ROOT / "dashboard" / "data" / "leaderboard.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="leaderboard.json not found — run the Day 5 notebook first")
+    return json.loads(path.read_text())
+
+
 # ---------------------------------------------------------------------------
 # Day 4 — chat agent + news sentiment
 # ---------------------------------------------------------------------------
@@ -232,6 +240,26 @@ def build_dashboard_context(symbol: str | None = None) -> str:
                 f"final backtest value {mc['lstm_final_value']:.2f} EGP; "
                 f"benchmark final value {mc['benchmark_final_value']:.2f} EGP."
             )
+        except Exception:
+            pass
+
+    leaderboard_path = REPO_ROOT / "dashboard" / "data" / "leaderboard.json"
+    if leaderboard_path.exists():
+        try:
+            lb = json.loads(leaderboard_path.read_text())
+            risk = lb.get("risk", {})
+            parts = []
+            for name in ("sma", "mpt", "benchmark"):
+                if name in risk:
+                    r = risk[name]
+                    parts.append(
+                        f"{name}: return {r['total_return_pct']:+.2f}%, "
+                        f"volatility {r['volatility_pct']:.2f}%, "
+                        f"max drawdown {r['max_drawdown_pct']:.2f}%, "
+                        f"final value {r['final_value']:.2f} EGP"
+                    )
+            if parts:
+                lines.append("Leaderboard (walk-forward test period) — " + "; ".join(parts) + ".")
         except Exception:
             pass
 

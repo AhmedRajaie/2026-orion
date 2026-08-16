@@ -196,6 +196,58 @@ async function loadModelCompare() {
   });
 }
 
+let leaderboardChart;
+
+async function loadLeaderboard() {
+  let data;
+  try {
+    const r = await fetch(`${API}/leaderboard`);
+    if (!r.ok) throw new Error("not found");
+    data = await r.json();
+  } catch (e) {
+    console.warn("leaderboard.json not available yet — run the Day 5 notebook first");
+    return;
+  }
+
+  const ctx = document.getElementById("leaderboardChart").getContext("2d");
+  if (leaderboardChart) leaderboardChart.destroy();
+  leaderboardChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.dates,
+      datasets: [
+        { label: "SMA crossover", data: data.sma, borderColor: "#38bdf8", pointRadius: 0, tension: 0.1 },
+        { label: "MPT (walk-forward)", data: data.mpt, borderColor: "#fbbf24", pointRadius: 0, tension: 0.1 },
+        { label: "Benchmark", data: data.benchmark, borderColor: "#8b98a9", borderDash: [5, 5], pointRadius: 0, tension: 0.1 }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8 } },
+        y: { ticks: { callback: v => v.toLocaleString() + " EGP" } }
+      }
+    }
+  });
+
+  const tbody = document.querySelector("#riskTable tbody");
+  const rows = [
+    ["SMA crossover", data.risk.sma],
+    ["MPT (walk-forward)", data.risk.mpt],
+    ["Benchmark", data.risk.benchmark],
+  ];
+  tbody.innerHTML = rows.map(([name, r]) => `
+    <tr>
+      <td>${name}</td>
+      <td class="${r.total_return_pct >= 0 ? 'buy' : 'sell'}">${r.total_return_pct.toFixed(2)}%</td>
+      <td>${r.volatility_pct.toFixed(2)}%</td>
+      <td class="sell">${r.max_drawdown_pct.toFixed(2)}%</td>
+      <td>${r.final_value.toFixed(2)} EGP</td>
+    </tr>
+  `).join("");
+}
+
 // --- Day 4: news & sentiment ---
 
 async function loadNewsSymbolSelect() {
@@ -266,6 +318,7 @@ async function sendChatMessage() {
   await loadBacktest(firstSymbol, fast, slow);
   await loadStrategyComparison();
   await loadModelCompare();
+  await loadLeaderboard();
 
   await loadNewsSymbolSelect();
   document.getElementById("newsBtn").addEventListener("click", loadNews);
