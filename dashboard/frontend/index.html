@@ -16,6 +16,25 @@
     h1 { font-weight: 600; margin-bottom: 4px; }
     .subtitle { color: #8b98a9; margin-bottom: 24px; font-size: 14px; }
 
+    nav.section-nav {
+      position: sticky;
+      top: 0;
+      background: #0b1220;
+      padding: 10px 0;
+      margin-bottom: 16px;
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      z-index: 10;
+      border-bottom: 1px solid #1b2740;
+    }
+    nav.section-nav a {
+      color: #8b98a9;
+      text-decoration: none;
+    }
+    nav.section-nav a:hover { color: #38bdf8; }
+
     .toolbar {
       display: flex;
       align-items: center;
@@ -38,6 +57,7 @@
       border-radius: 12px;
       padding: 18px;
       margin-bottom: 20px;
+      scroll-margin-top: 60px;
     }
     .panel h2 {
       margin: 0 0 12px 0;
@@ -68,11 +88,14 @@
 
     canvas { max-height: 360px; }
 
+    .table-scroll { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #1b2740; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #1b2740; white-space: nowrap; }
     th { color: #8b98a9; font-weight: 500; }
     .buy { color: #4ade80; }
     .sell { color: #f87171; }
+
+    .trade-log-scroll { max-height: 420px; overflow-y: auto; }
 
     /* --- News panel --- */
     #newsSummary { color: #c7d1e0; font-size: 14px; line-height: 1.5; }
@@ -122,7 +145,16 @@
 </head>
 <body>
   <h1>Trading Dashboard</h1>
-  <div class="subtitle">MA9 / MA20 crossover strategy backtest</div>
+  <div class="subtitle">Multi-strategy quant dashboard — backtests, ML model comparison, portfolio theory, and an AI research assistant</div>
+
+  <nav class="section-nav" aria-label="Section navigation">
+    <a href="#backtest">Backtest</a>
+    <a href="#comparison">Strategy Comparison</a>
+    <a href="#models">Models</a>
+    <a href="#leaderboard">Leaderboard</a>
+    <a href="#news">News</a>
+    <a href="#chat">Chat</a>
+  </nav>
 
   <div class="toolbar">
     <div class="panel" id="status" style="margin:0; padding:10px 16px;">connecting…</div>
@@ -138,7 +170,7 @@
 
   <div class="stats-grid" id="statsGrid"></div>
 
-  <div class="panel">
+  <div class="panel" id="backtest">
     <h2>Price with MA9 / MA20 and signals</h2>
     <canvas id="priceChart"></canvas>
   </div>
@@ -150,13 +182,15 @@
 
   <div class="panel">
     <h2>Trade log</h2>
-    <table id="tradeLog">
-      <thead><tr><th>Type</th><th>Date</th><th>Price</th></tr></thead>
-      <tbody></tbody>
-    </table>
+    <div class="trade-log-scroll">
+      <table id="tradeLog">
+        <thead><tr><th>Type</th><th>Date</th><th>Price</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="comparison">
     <h2>Strategy Performance Comparison</h2>
     <div class="subtitle" id="comparisonSubtitle" style="margin-bottom:16px;"></div>
 
@@ -174,21 +208,23 @@
     </div>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="models">
     <h2>MLP vs LSTM (test loss — lower is better)</h2>
     <canvas id="compareChart" role="img" aria-label="Bar chart comparing MLP and LSTM test loss"></canvas>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="leaderboard">
     <h2>Leaderboard vs EGX Benchmark</h2>
     <canvas id="leaderboardChart" role="img" aria-label="Line chart comparing SMA, MPT, and benchmark equity curves"></canvas>
-    <table id="riskTable" style="margin-top:16px;">
-      <thead><tr><th>Strategy</th><th>Total Return</th><th>Volatility</th><th>Max Drawdown</th><th>Final Value</th></tr></thead>
-      <tbody></tbody>
-    </table>
+    <div class="table-scroll" style="margin-top:16px;">
+      <table id="riskTable">
+        <thead><tr><th>Strategy</th><th>Total Return</th><th>Volatility</th><th>Max Drawdown</th><th>Final Value</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="news">
     <h2>News &amp; Sentiment</h2>
     <div class="toolbar" style="margin-bottom:14px;">
       <select id="newsSymbolSelect" aria-label="Select stock for news"></select>
@@ -198,7 +234,7 @@
     <ul id="newsHeadlines"></ul>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="chat">
     <h2>Ask the Dashboard</h2>
     <div id="chatLog" aria-live="polite"></div>
     <div class="chat-input-row">

@@ -191,7 +191,13 @@ async function loadModelCompare() {
     options: {
       responsive: true,
       plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true } }
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: "Test Loss (MSE)", color: "#8b98a9" },
+          ticks: { color: "#8b98a9" }
+        }
+      }
     }
   });
 }

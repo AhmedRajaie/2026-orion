@@ -111,7 +111,10 @@ def get_backtest(symbol: str, fast: int = 9, slow: int = 20, initial_capital: fl
         peak = max(peak, v)
         running_max.append(peak)
     drawdowns = [(v - p) / p for v, p in zip(portfolio, running_max)]
-    max_drawdown_pct = min(drawdowns)
+    # abs() keeps the sign convention consistent with every other panel on the
+    # dashboard: max drawdown is always reported as a positive magnitude
+    # (bigger number = worse), never a signed negative percentage.
+    max_drawdown_pct = abs(min(drawdowns))
 
     return {
         "symbol": symbol,
