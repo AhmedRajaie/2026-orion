@@ -1,4 +1,4 @@
-const API = "http://localhost:8001";  // update to 8000 once that port's old process clears
+const API = "http://localhost:8000";
 let priceChart, equityChart;
 
 async function checkHealth() {
@@ -196,6 +196,63 @@ async function loadModelCompare() {
   });
 }
 
+// --- Day 4: news & sentiment ---
+
+async function loadNewsSymbolSelect() {
+  const select = document.getElementById("newsSymbolSelect");
+  const universe = await fetch(`${API}/universe`).then(r => r.json());
+  select.innerHTML = universe.map(s => `<option value="${s}">${s}</option>`).join("");
+}
+
+async function loadNews() {
+  const symbol = document.getElementById("newsSymbolSelect").value;
+  const summaryEl = document.getElementById("newsSummary");
+  const listEl = document.getElementById("newsHeadlines");
+  summaryEl.textContent = "Loading…";
+  listEl.innerHTML = "";
+  try {
+    const data = await fetch(`${API}/news/${symbol}`).then(r => r.json());
+    summaryEl.textContent = data.summary;
+    listEl.innerHTML = data.headlines.map(h => `<li>${h}</li>`).join("");
+  } catch (e) {
+    summaryEl.textContent = "Couldn't load news right now.";
+  }
+}
+
+// --- Day 4: chat agent ---
+
+function appendChatMessage(role, text) {
+  const log = document.getElementById("chatLog");
+  const div = document.createElement("div");
+  div.className = `chat-msg ${role}`;
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById("chatInput");
+  const message = input.value.trim();
+  if (!message) return;
+  appendChatMessage("user", message);
+  input.value = "";
+
+  const loadingDiv = appendChatMessage("assistant", "…");
+
+  try {
+    const res = await fetch(`${API}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, symbol: currentSymbol })
+    });
+    const data = await res.json();
+    loadingDiv.textContent = data.reply || "No response.";
+  } catch (e) {
+    loadingDiv.textContent = "Sorry, something went wrong.";
+  }
+}
+
 (async function init() {
   await checkHealth();
   const firstSymbol = await loadUniverse();
@@ -209,4 +266,12 @@ async function loadModelCompare() {
   await loadBacktest(firstSymbol, fast, slow);
   await loadStrategyComparison();
   await loadModelCompare();
+
+  await loadNewsSymbolSelect();
+  document.getElementById("newsBtn").addEventListener("click", loadNews);
+
+  document.getElementById("chatSendBtn").addEventListener("click", sendChatMessage);
+  document.getElementById("chatInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendChatMessage();
+  });
 })();

@@ -1,7 +1,20 @@
 """FastAPI backend for the dashboard. Grows via dashboard/tasks/.
 Run: uv run uvicorn dashboard.backend.main:app --reload --port 8000
 """
-from fastapi import FastAPI
+import os
+import json
+from pathlib import Path
+from urllib.parse import quote
+
+from dotenv import load_dotenv
+load_dotenv()
+
+import httpx
+import xml.etree.ElementTree as ET
+import anthropic
+from pydantic import BaseModel
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Younit-style trading dashboard")
@@ -14,9 +27,6 @@ def health():
 
 
 from tradinglab.data_feed import DataFeed
-from fastapi import HTTPException
-from pathlib import Path
-import json
 
 
 def find_repo_root():
@@ -126,7 +136,7 @@ from tradinglab.simulator import PortfolioSimulator
 from tradinglab.backtester import run_backtest
 from tradinglab.strategies.sma import sma_crossover_weights
 from tradinglab.metrics import total_return, max_drawdown
-from .strategy_new import run_universe_weekly_threshold  # if this errors, try: from dashboard.backend.strategy_new import run_universe_weekly_threshold
+from .strategy_new import run_universe_weekly_threshold
 
 COMPARISON_UNIVERSE = ['COMI', 'HRHO', 'TMGH', 'SWDY', 'FWRY', 'ABUK']
 COMPARISON_CAPITAL = 1000.0
@@ -175,3 +185,126 @@ def get_compare():
     if not path.exists():
         raise HTTPException(status_code=404, detail="model_compare.json not found — run the Day 3 notebook first")
     return json.loads(path.read_text())
+
+
+# ---------------------------------------------------------------------------
+# Day 4 — chat agent + news sentiment
+# ---------------------------------------------------------------------------
+
+def get_anthropic_client() -> anthropic.Anthropic:
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not set — check your .env file")
+    return anthropic.Anthropic(api_key=api_key)
+
+
+def build_dashboard_context(symbol: str | None = None) -> str:
+    lines = [f"Universe of stocks tracked: {', '.join(feed.symbols)}"]
+
+    if symbol and symbol in feed.symbols:
+        bt = get_backtest(symbol)
+        lines.append(
+            f"Currently selected stock: {symbol}. MA9/MA20 crossover backtest — "
+            f"total return {bt['total_return_pct']:.2f}%, max drawdown {bt['max_drawdown_pct']:.2f}%, "
+            f"final value {bt['final_value']:.2f} EGP, {bt['buy_count']} buys / {bt['sell_count']} sells."
+        )
+
+    try:
+        comp = get_strategy_comparison()
+        lines.append(
+            f"Strategy comparison (universe {', '.join(comp['universe'])}): "
+            f"base SMA crossover total return {comp['base']['total_return_pct']:.2f}% "
+            f"(max drawdown {comp['base']['max_drawdown_pct']:.2f}%); "
+            f"new weekly-threshold strategy total return {comp['new']['total_return_pct']:.2f}% "
+            f"(max drawdown {comp['new']['max_drawdown_pct']:.2f}%)."
+        )
+    except Exception:
+        pass
+
+    compare_path = REPO_ROOT / "dashboard" / "data" / "model_compare.json"
+    if compare_path.exists():
+        try:
+            mc = json.loads(compare_path.read_text())
+            lines.append(
+                f"Model comparison — MLP test loss {mc['mlp_test_loss']:.6f} (IC {mc['mlp_ic']:+.3f}), "
+                f"final backtest value {mc['mlp_final_value']:.2f} EGP; "
+                f"LSTM test loss {mc['lstm_test_loss']:.6f} (IC {mc['lstm_ic']:+.3f}), "
+                f"final backtest value {mc['lstm_final_value']:.2f} EGP; "
+                f"benchmark final value {mc['benchmark_final_value']:.2f} EGP."
+            )
+        except Exception:
+            pass
+
+    return "\n".join(lines)
+
+
+class ChatRequest(BaseModel):
+    message: str
+    symbol: str | None = None
+
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    client = get_anthropic_client()
+    context = build_dashboard_context(req.symbol)
+
+    system_prompt = (
+        "You are a helpful assistant embedded in a trading strategy dashboard. "
+        "Answer questions using ONLY the dashboard data given below. "
+        "If something isn't covered by this data, say so plainly rather than guessing. "
+        "Keep answers concise (2-4 sentences). Describe what the backtested data shows — "
+        "never recommend buying or selling anything.\n\n"
+        f"Current dashboard data:\n{context}"
+    )
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-5",
+            max_tokens=500,
+            system=system_prompt,
+            messages=[{"role": "user", "content": req.message}],
+        )
+        reply = "".join(block.text for block in response.content if block.type == "text")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
+
+    return {"reply": reply}
+
+
+@app.get("/news/{symbol}")
+def get_news(symbol: str):
+    if symbol not in feed.symbols:
+        raise HTTPException(status_code=404, detail=f"Unknown symbol: {symbol}")
+
+    query = quote(f"{symbol} EGX Egypt stock")
+    url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
+
+    try:
+        resp = httpx.get(url, timeout=10.0, follow_redirects=True)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        headlines = [item.find("title").text for item in root.findall(".//item")[:8] if item.find("title") is not None]
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Couldn't fetch news: {e}")
+
+    if not headlines:
+        return {"symbol": symbol, "headlines": [], "summary": "No recent news found for this symbol."}
+
+    client = get_anthropic_client()
+    headline_block = "\n".join(f"- {h}" for h in headlines)
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-5",
+            max_tokens=300,
+            system=(
+                "You summarize stock news headlines into a brief sentiment readout. "
+                "State whether the tone is bullish, bearish, or mixed/neutral, and why, "
+                "in 2-3 sentences. Do not give investment advice."
+            ),
+            messages=[{"role": "user", "content": f"Headlines for {symbol}:\n{headline_block}"}],
+        )
+        summary = "".join(block.text for block in response.content if block.type == "text")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Summary failed: {e}")
+
+    return {"symbol": symbol, "headlines": headlines, "summary": summary}

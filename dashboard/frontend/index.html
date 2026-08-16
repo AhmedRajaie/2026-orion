@@ -73,6 +73,51 @@
     th { color: #8b98a9; font-weight: 500; }
     .buy { color: #4ade80; }
     .sell { color: #f87171; }
+
+    /* --- News panel --- */
+    #newsSummary { color: #c7d1e0; font-size: 14px; line-height: 1.5; }
+    #newsHeadlines { margin: 0; padding-left: 20px; font-size: 13px; color: #8b98a9; }
+    #newsHeadlines li { margin-bottom: 4px; }
+
+    /* --- Chat panel --- */
+    #chatLog {
+      max-height: 340px;
+      overflow-y: auto;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-right: 4px;
+    }
+    .chat-msg {
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 14px;
+      line-height: 1.4;
+      max-width: 85%;
+      white-space: pre-wrap;
+    }
+    .chat-msg.user {
+      background: #1b2740;
+      align-self: flex-end;
+      color: #e6edf3;
+    }
+    .chat-msg.assistant {
+      background: #0d1626;
+      border: 1px solid #1b2740;
+      align-self: flex-start;
+      color: #c7d1e0;
+    }
+    .chat-input-row { display: flex; gap: 8px; }
+    #chatInput {
+      flex: 1;
+      background: #0d1626;
+      color: #e6edf3;
+      border: 1px solid #223049;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -132,6 +177,25 @@
   <div class="panel">
     <h2>MLP vs LSTM (test loss — lower is better)</h2>
     <canvas id="compareChart" role="img" aria-label="Bar chart comparing MLP and LSTM test loss"></canvas>
+  </div>
+
+  <div class="panel">
+    <h2>News &amp; Sentiment</h2>
+    <div class="toolbar" style="margin-bottom:14px;">
+      <select id="newsSymbolSelect" aria-label="Select stock for news"></select>
+      <button id="newsBtn" style="background:#38bdf8; color:#0b1220; border:none; border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">Get News Summary</button>
+    </div>
+    <div id="newsSummary" aria-live="polite"></div>
+    <ul id="newsHeadlines"></ul>
+  </div>
+
+  <div class="panel">
+    <h2>Ask the Dashboard</h2>
+    <div id="chatLog" aria-live="polite"></div>
+    <div class="chat-input-row">
+      <input id="chatInput" type="text" placeholder="Ask about the strategies, models, or a stock..." aria-label="Chat message">
+      <button id="chatSendBtn" style="background:#38bdf8; color:#0b1220; border:none; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer;">Send</button>
+    </div>
   </div>
 
   <script src="app.js"></script>
