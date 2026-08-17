@@ -168,6 +168,9 @@ async function loadStrategyComparison() {
 
 let compareChart, compareValueChart;
 
+// Draws a value label centered above each bar. Relies on the chart's own
+// y-scale headroom (see suggestedMax below) so the label never gets clipped
+// by the top of the canvas even when a bar nearly reaches the axis max.
 function drawBarValueLabels(chart, formatFn) {
   const { ctx } = chart;
   ctx.save();
@@ -178,11 +181,29 @@ function drawBarValueLabels(chart, formatFn) {
   chart.data.datasets.forEach((dataset, di) => {
     const meta = chart.getDatasetMeta(di);
     meta.data.forEach((bar, i) => {
-      ctx.fillText(formatFn(dataset.data[i]), bar.x, bar.y - 6);
+      ctx.fillText(formatFn(dataset.data[i]), bar.x, bar.y - 8);
     });
   });
   ctx.restore();
 }
+
+const barChartBaseOptions = {
+  responsive: true,
+  layout: { padding: { top: 28 } },
+  plugins: { legend: { display: false } },
+  scales: {
+    y: {
+      beginAtZero: true,
+      grid: { color: "#1b2740" },
+      title: { color: "#8b98a9" },
+      ticks: { color: "#8b98a9" }
+    },
+    x: {
+      grid: { display: false },
+      ticks: { color: "#c7d1e0", font: { weight: "600" } }
+    }
+  }
+};
 
 async function loadModelCompare() {
   let data;
@@ -195,6 +216,9 @@ async function loadModelCompare() {
     return;
   }
 
+  const lossValues = [data.mlp_test_loss, data.lstm_test_loss];
+  const lossMax = Math.max(...lossValues);
+
   const lossCtx = document.getElementById("compareChart").getContext("2d");
   if (compareChart) compareChart.destroy();
   compareChart = new Chart(lossCtx, {
@@ -203,23 +227,31 @@ async function loadModelCompare() {
       labels: ["MLP", "LSTM"],
       datasets: [{
         label: "Test loss",
-        data: [data.mlp_test_loss, data.lstm_test_loss],
-        backgroundColor: ["#38bdf8", "#f87171"]
+        data: lossValues,
+        backgroundColor: ["#38bdf8", "#f87171"],
+        borderRadius: 8,
+        maxBarThickness: 140
       }]
     },
     options: {
-      responsive: true,
-      plugins: { legend: { display: false } },
+      ...barChartBaseOptions,
       scales: {
+        ...barChartBaseOptions.scales,
         y: {
-          beginAtZero: true,
-          title: { display: true, text: "Test Loss (MSE)", color: "#8b98a9" },
-          ticks: { color: "#8b98a9" }
+          ...barChartBaseOptions.scales.y,
+          // 25% headroom above the tallest bar so the value label always
+          // has clear space above it, regardless of how close the two
+          // values are to each other.
+          suggestedMax: lossMax * 1.25,
+          title: { display: true, text: "Test Loss (MSE)", color: "#8b98a9" }
         }
       }
     },
     plugins: [{ id: "lossLabels", afterDatasetsDraw: c => drawBarValueLabels(c, v => v.toFixed(6)) }]
   });
+
+  const valueValues = [data.mlp_final_value, data.lstm_final_value, data.benchmark_final_value];
+  const valueMax = Math.max(...valueValues);
 
   const valueCtx = document.getElementById("compareValueChart").getContext("2d");
   if (compareValueChart) compareValueChart.destroy();
@@ -229,18 +261,20 @@ async function loadModelCompare() {
       labels: ["MLP", "LSTM", "Benchmark"],
       datasets: [{
         label: "Final value (EGP)",
-        data: [data.mlp_final_value, data.lstm_final_value, data.benchmark_final_value],
-        backgroundColor: ["#38bdf8", "#f87171", "#8b98a9"]
+        data: valueValues,
+        backgroundColor: ["#38bdf8", "#f87171", "#8b98a9"],
+        borderRadius: 8,
+        maxBarThickness: 140
       }]
     },
     options: {
-      responsive: true,
-      plugins: { legend: { display: false } },
+      ...barChartBaseOptions,
       scales: {
+        ...barChartBaseOptions.scales,
         y: {
-          beginAtZero: true,
-          title: { display: true, text: "Final Portfolio Value (EGP)", color: "#8b98a9" },
-          ticks: { color: "#8b98a9" }
+          ...barChartBaseOptions.scales.y,
+          suggestedMax: valueMax * 1.15,
+          title: { display: true, text: "Final Portfolio Value (EGP)", color: "#8b98a9" }
         }
       }
     },
