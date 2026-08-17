@@ -166,7 +166,23 @@ async function loadStrategyComparison() {
   tiktokCompChart = renderComparisonChart("tiktokCompChart", data.tiktok, "#fbbf24");
 }
 
-let compareChart;
+let compareChart, compareValueChart;
+
+function drawBarValueLabels(chart, formatFn) {
+  const { ctx } = chart;
+  ctx.save();
+  ctx.fillStyle = "#e6edf3";
+  ctx.font = "600 13px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  chart.data.datasets.forEach((dataset, di) => {
+    const meta = chart.getDatasetMeta(di);
+    meta.data.forEach((bar, i) => {
+      ctx.fillText(formatFn(dataset.data[i]), bar.x, bar.y - 6);
+    });
+  });
+  ctx.restore();
+}
 
 async function loadModelCompare() {
   let data;
@@ -179,9 +195,9 @@ async function loadModelCompare() {
     return;
   }
 
-  const ctx = document.getElementById("compareChart").getContext("2d");
+  const lossCtx = document.getElementById("compareChart").getContext("2d");
   if (compareChart) compareChart.destroy();
-  compareChart = new Chart(ctx, {
+  compareChart = new Chart(lossCtx, {
     type: "bar",
     data: {
       labels: ["MLP", "LSTM"],
@@ -201,8 +217,40 @@ async function loadModelCompare() {
           ticks: { color: "#8b98a9" }
         }
       }
-    }
+    },
+    plugins: [{ id: "lossLabels", afterDatasetsDraw: c => drawBarValueLabels(c, v => v.toFixed(6)) }]
   });
+
+  const valueCtx = document.getElementById("compareValueChart").getContext("2d");
+  if (compareValueChart) compareValueChart.destroy();
+  compareValueChart = new Chart(valueCtx, {
+    type: "bar",
+    data: {
+      labels: ["MLP", "LSTM", "Benchmark"],
+      datasets: [{
+        label: "Final value (EGP)",
+        data: [data.mlp_final_value, data.lstm_final_value, data.benchmark_final_value],
+        backgroundColor: ["#38bdf8", "#f87171", "#8b98a9"]
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: "Final Portfolio Value (EGP)", color: "#8b98a9" },
+          ticks: { color: "#8b98a9" }
+        }
+      }
+    },
+    plugins: [{ id: "valueLabels", afterDatasetsDraw: c => drawBarValueLabels(c, v => v.toFixed(0) + " EGP") }]
+  });
+
+  const lossGapPct = (Math.abs(data.mlp_test_loss - data.lstm_test_loss) / data.mlp_test_loss * 100).toFixed(1);
+  const valueGapPct = (Math.abs(data.mlp_final_value - data.lstm_final_value) / data.mlp_final_value * 100).toFixed(0);
+  document.getElementById("compareNote").textContent =
+    `Test loss differs by only ${lossGapPct}% — yet the backtested outcome differs by ${valueGapPct}%. Raw prediction accuracy barely tells you which model will actually make money.`;
 }
 
 let leaderboardChart;
