@@ -4,6 +4,7 @@ let portfolioChartInstance = null;
 let drawdownChartInstance = null;
 let simulationChartInstance = null;
 let tiktok06ChartInstance = null;
+let frontierChartInstance = null;
 let selectedSymbol = "ADIB";
 let chatHistory = [];
 
@@ -54,10 +55,11 @@ async function loadSymbol(symbol) {
   resetChat(symbol);
 
   try {
-    const [data, simulationData, tiktok06Data] = await Promise.all([
+    const [data, simulationData, tiktok06Data, frontierData] = await Promise.all([
       fetchSymbolData(symbol),
       fetchSimulations(symbol),
       fetchTikTok06(),
+      fetchMptFrontier(),
     ]);
     const mergedData = {
       ...data,
@@ -81,6 +83,8 @@ async function loadSymbol(symbol) {
     renderSimulationTable(mergedData.simulations || []);
     createTikTok06Chart(tiktok06Data);
     renderTikTok06Table(tiktok06Data);
+    renderMptInsights(mergedData.insights || {});
+    renderFrontier(frontierData || {});
     setStatus(`Connected — ${symbol}`);
   } catch (error) {
     console.error(error);
@@ -297,6 +301,130 @@ function clearCharts() {
     tiktok06ChartInstance.destroy();
     tiktok06ChartInstance = null;
   }
+}
+
+async function fetchMptFrontier(samples = 60) {
+  const url = `${API_BASE}/mpt/frontier?samples=${encodeURIComponent(samples)}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.warn(`Frontier request failed: ${response.status} ${errorText}`);
+    return null;
+  }
+  return await response.json();
+}
+
+function renderFrontier(data) {
+  console.log("frontier data:", data);
+  // data: { n_assets, symbols, samples, portfolios, frontier }
+  const chartEl = document.getElementById("frontierChart");
+  const tableEl = document.getElementById("frontierTable");
+  if (!chartEl) return;
+
+  const points = (data.portfolios || []).map((p) => ({ x: Number(p.annual_vol_pct), y: Number(p.annual_return_pct) }));
+  const frontierPoints = (data.frontier || []).map((p) => ({ x: Number(p.annual_vol_pct), y: Number(p.annual_return_pct) }));
+
+  if (frontierChartInstance) {
+    frontierChartInstance.destroy();
+    frontierChartInstance = null;
+  }
+
+  frontierChartInstance = new Chart(chartEl, {
+    type: "scatter",
+    data: {
+      datasets: [
+        {
+          label: "Sampled portfolios",
+          data: points,
+          backgroundColor: "rgba(56, 189, 248, 0.6)",
+          pointRadius: 3,
+        },
+        {
+          label: "Efficient frontier",
+          data: frontierPoints,
+          type: "line",
+          borderColor: "#4ade80",
+          backgroundColor: "transparent",
+          tension: 0.2,
+          showLine: true,
+          fill: false,
+          pointRadius: 4,
+        },
+      ],
+    },
+    options: {
+      plugins: { legend: { display: true } },
+      scales: {
+        x: { title: { display: true, text: "Annual Volatility (%)" } },
+        y: { title: { display: true, text: "Annual Return (%)" } },
+      },
+    },
+  });
+
+  if (tableEl) {
+    // show frontier points (concise)
+    tableEl.innerHTML = "";
+    const header = document.createElement("tr");
+    header.innerHTML = `<th>Volatility (%)</th><th>Return (%)</th>`;
+    tableEl.appendChild(header);
+    (data.frontier || []).forEach((p) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${p.annual_vol_pct.toFixed(2)}</td><td>${p.annual_return_pct.toFixed(2)}</td>`;
+      tableEl.appendChild(row);
+    });
+  }
+}
+
+function renderMptInsights(insights) {
+  const container = document.getElementById("mptInsights");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const titleRow = document.createElement("div");
+  titleRow.className = "mpt-title-row";
+  const symbol = document.createElement("p");
+  symbol.className = "mpt-symbol";
+  symbol.textContent = insights.Symbol ? `${insights.Symbol} — MPT Summary` : "MPT Summary";
+  titleRow.appendChild(symbol);
+
+  const statsGrid = document.createElement("div");
+  statsGrid.className = "mpt-stats-grid";
+
+  const stats = [
+    { label: "Expected Annual Return", value: insights["Expected Annual Return (%)"] },
+    { label: "Annual Volatility", value: insights["Annual Volatility (%)"] },
+    { label: "Sharpe (MPT)", value: insights["MPT Sharpe"] ?? insights["Sharpe Ratio"] },
+    { label: "Total Return (backtest)", value: insights["Total Return (%)"] },
+  ];
+
+  stats.forEach((s) => {
+    const cell = document.createElement("div");
+    cell.className = "mpt-stat";
+    const label = document.createElement("p");
+    label.className = "mpt-stat-label";
+    label.textContent = s.label;
+    const value = document.createElement("p");
+    value.className = "mpt-stat-value";
+    value.textContent = s.value === null || s.value === undefined ? "—" : (typeof s.value === "number" ? s.value : s.value);
+    cell.appendChild(label);
+    cell.appendChild(value);
+    statsGrid.appendChild(cell);
+  });
+
+  const reco = document.createElement("div");
+  reco.className = "mpt-reco";
+  const recoTitle = document.createElement("p");
+  recoTitle.className = "mpt-reco-title";
+  recoTitle.textContent = "Recommendation";
+  const recoBody = document.createElement("p");
+  recoBody.className = "mpt-reco-body";
+  recoBody.textContent = insights["MPT Recommendation"] || "No recommendation available.";
+  reco.appendChild(recoTitle);
+  reco.appendChild(recoBody);
+
+  container.appendChild(titleRow);
+  container.appendChild(statsGrid);
+  container.appendChild(reco);
 }
 
 function createPriceChart(data) {

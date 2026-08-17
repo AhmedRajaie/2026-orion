@@ -230,6 +230,41 @@ def data(symbol: str = DEFAULT_SYMBOL):
         "Sell Signals": sma_metrics["sell_signals"],
     }
 
+    # Modern Portfolio Theory (MPT) derived statistics for the selected symbol
+    returns = df["close"].pct_change().dropna()
+    if not returns.empty:
+        mean_daily = float(returns.mean())
+        std_daily = float(returns.std(ddof=0))
+        ann_return = (1 + mean_daily) ** 252 - 1
+        ann_vol = std_daily * (252 ** 0.5)
+        mpt_sharpe = ann_return / ann_vol if ann_vol > 0 else None
+
+        if mpt_sharpe is None:
+            mpt_reco = "Insufficient data to generate an MPT recommendation."
+        elif mpt_sharpe >= 1.0:
+            mpt_reco = "Strong risk-adjusted returns — consider overweighting this asset (10–25%) within a diversified portfolio, but avoid concentration risk."
+        elif mpt_sharpe >= 0.5:
+            mpt_reco = "Moderate risk-adjusted returns — consider a neutral allocation (5–15%) and pair with low-correlation assets."
+        elif mpt_sharpe >= 0.0:
+            mpt_reco = "Low risk-adjusted returns — treat as satellite exposure (0–5%) and prioritise diversification."
+        else:
+            mpt_reco = "Negative risk-adjusted returns — avoid adding to core allocations without hedging or strong conviction."
+
+        insights.update(
+            {
+                "Expected Annual Return (%)": round(ann_return * 100, 2),
+                "Annual Volatility (%)": round(ann_vol * 100, 2),
+                "MPT Sharpe": round(mpt_sharpe, 4) if mpt_sharpe is not None else None,
+                "MPT Recommendation": mpt_reco,
+            }
+        )
+    else:
+        insights.update({
+            "Expected Annual Return (%)": None,
+            "Annual Volatility (%)": None,
+            "MPT Sharpe": None,
+            "MPT Recommendation": "Not enough price history to compute MPT statistics.",
+        })
     metrics = {
         "total_return_pct": insights["Total Return (%)"],
         "final_portfolio_value": insights["Final Portfolio Value"],
@@ -402,3 +437,100 @@ def _tiktok_06_backtest():
 @app.get("/production/tiktok-06")
 def production_tiktok_06():
     return _tiktok_06_backtest()
+
+
+@lru_cache(maxsize=1)
+def _compute_frontier(samples: int = 60, commission: float = 0.005):
+    """Monte-Carlo constant-weight portfolios backtested across the EGX universe.
+    Returns per-portfolio annualized return, volatility, sharpe, final value, and the pareto frontier.
+    """
+    from tradinglab.data_feed import DataFeed
+    from tradinglab.simulator import PortfolioSimulator
+    from tradinglab.backtester import run_backtest
+
+    feed = DataFeed.from_dir(DATA_FOLDER)
+    # DataFeed.symbols is a list attribute; avoid calling it as a function
+    symbols = feed.symbols
+    n_assets = len(symbols)
+    if n_assets == 0:
+        raise HTTPException(status_code=500, detail="No assets found in EGX data folder")
+
+    simulator = PortfolioSimulator(feed, benchmark="equal_weight", commission=commission)
+    start_cash = 1000.0
+
+    rng = np.random.default_rng(42)
+    portfolios = []
+    for i in range(int(samples)):
+        # random weights via Dirichlet for full-support portfolios
+        weights = rng.random(n_assets)
+        if weights.sum() == 0:
+            weights = np.ones(n_assets) / n_assets
+        else:
+            weights = weights / weights.sum()
+
+        def make_strategy(w):
+            def strategy(observation):
+                return w
+
+            return strategy
+
+        back = run_backtest(simulator, make_strategy(weights), lookback=30)
+        portfolio_series = back["portfolio"] * start_cash
+        # compute daily returns
+        ser = pd.Series(portfolio_series)
+        daily_ret = ser.pct_change().dropna()
+        if daily_ret.empty:
+            ann_return = 0.0
+            ann_vol = 0.0
+            sharpe = None
+        else:
+            mean_daily = float(daily_ret.mean())
+            std_daily = float(daily_ret.std(ddof=0))
+            ann_return = (1 + mean_daily) ** 252 - 1
+            ann_vol = std_daily * (252 ** 0.5)
+            sharpe = ann_return / ann_vol if ann_vol > 0 else None
+
+        portfolios.append(
+            {
+                "id": f"p{i}",
+                "weights": [float(x) for x in weights],
+                "final_portfolio_value": float(ser.iloc[-1]) if not ser.empty else float(start_cash),
+                "annual_return_pct": round(ann_return * 100, 4),
+                "annual_vol_pct": round(ann_vol * 100, 4),
+                "sharpe": round(sharpe, 4) if sharpe is not None else None,
+            }
+        )
+
+    # build pareto frontier: sort by vol asc, keep points with strictly increasing return
+    sorted_ports = sorted(portfolios, key=lambda x: x["annual_vol_pct"])
+    frontier = []
+    best_return = -float("inf")
+    for p in sorted_ports:
+        if p["annual_return_pct"] > best_return:
+            frontier.append({"annual_vol_pct": p["annual_vol_pct"], "annual_return_pct": p["annual_return_pct"]})
+            best_return = p["annual_return_pct"]
+
+    return {
+        "n_assets": n_assets,
+        "symbols": symbols,
+        "samples": len(portfolios),
+        "portfolios": portfolios,
+        "frontier": frontier,
+    }
+
+
+@app.get("/mpt/frontier")
+def mpt_frontier(samples: int = 60, commission: float = 0.005):
+    """Compute and return an efficient frontier using PortfolioSimulator and backtests.
+
+    Query params:
+    - `samples`: number of random constant-weight portfolios to backtest (default 60)
+    - `commission`: commission rate to pass to PortfolioSimulator (default 0.005)
+    """
+    try:
+        result = _compute_frontier(int(samples), float(commission))
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

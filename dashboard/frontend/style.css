@@ -238,6 +238,71 @@ canvas {
   text-transform: uppercase;
 }
 
+/* MPT Insights styles */
+.insights-card {
+  grid-column: 1 / -1;
+}
+
+.mpt-insights {
+  display: grid;
+  gap: 12px;
+}
+
+.mpt-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.mpt-symbol {
+  margin: 0;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.mpt-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.mpt-stat {
+  padding: 12px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(20,38,60,0.6), rgba(15,23,42,0.6));
+  border: 1px solid var(--border);
+}
+
+.mpt-stat-label {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.mpt-stat-value {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.mpt-reco {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.06);
+}
+
+.mpt-reco-title {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.mpt-reco-body {
+  margin: 0;
+}
+
 .chat-message--user .chat-message__label {
   color: #bae6fd;
 }
