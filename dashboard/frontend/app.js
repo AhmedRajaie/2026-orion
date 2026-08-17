@@ -52,7 +52,12 @@ const els = {
   fullscreenBtn: document.getElementById("fullscreenBtn"),
   downloadBtn: document.getElementById("downloadBtn"),
   sectionSelect: document.getElementById("sectionSelect"),
-  newsPanel: document.getElementById("newsPanel"),
+  newsAssetSelect: document.getElementById("newsAssetSelect"),
+  newsFetchBtn: document.getElementById("newsFetchBtn"),
+  newsStatusBanner: document.getElementById("newsStatusBanner"),
+  newsEmptyState: document.getElementById("newsEmptyState"),
+  newsContent: document.getElementById("newsContent"),
+  newsPanelTitle: document.getElementById("newsPanelTitle"),
   newsSentimentBadge: document.getElementById("newsSentimentBadge"),
   newsHeadlineList: document.getElementById("newsHeadlineList"),
   newsSummary: document.getElementById("newsSummary"),
@@ -99,9 +104,9 @@ async function loadAssets() {
     const r = await fetch(`${API}/assets`);
     const j = await r.json();
     state.assets = j.assets || [];
-    els.assetSelect.innerHTML = state.assets
-      .map((asset) => `<option value="${asset}">${asset}</option>`)
-      .join("");
+    const options = state.assets.map((asset) => `<option value="${asset}">${asset}</option>`).join("");
+    els.assetSelect.innerHTML = options;
+    els.newsAssetSelect.innerHTML = options;
   } catch (e) {
     setBanner("Unable to load assets from the backend.", "error");
   }
@@ -165,7 +170,6 @@ async function runBacktest() {
     state.strategyPerformance = strategyPerformance;
     renderResults(backtestResult);
     renderStrategyPerformance(strategyPerformance, backtestResult);
-    loadNewsSentiment(payload.symbol);
     setBanner(`Backtest complete for ${backtestResult.symbol}.`, "success");
   } catch (e) {
     setBanner(e.message || "Backtest failed.", "error");
@@ -415,19 +419,33 @@ function renderResults(result) {
 }
 
 async function loadNewsSentiment(symbol) {
+  if (!symbol) return;
+  els.newsFetchBtn.disabled = true;
+  els.newsStatusBanner.textContent = `Fetching latest news for ${symbol}…`;
+  els.newsStatusBanner.className = "status-banner";
+  els.newsEmptyState.hidden = true;
+  els.newsContent.hidden = false;
   els.newsSentimentBadge.textContent = "loading…";
   els.newsSentimentBadge.className = "pill pill--neutral";
   els.newsHeadlineList.innerHTML = "";
   els.newsSummary.textContent = "";
+  els.newsPanelTitle.textContent = `📰 Latest News & Sentiment — ${symbol}`;
+
   try {
     const r = await fetch(`${API}/api/news-sentiment?symbol=${encodeURIComponent(symbol)}`);
     const data = await r.json();
     if (!r.ok) throw new Error(data.detail || "News sentiment failed");
     state.newsSentiment = data;
     renderNewsSentiment(data);
+    els.newsStatusBanner.textContent = `Loaded for ${symbol}.`;
+    els.newsStatusBanner.className = "status-banner success";
   } catch (e) {
     els.newsSentimentBadge.textContent = "unavailable";
     els.newsSummary.textContent = "Could not load news sentiment for this stock right now.";
+    els.newsStatusBanner.textContent = e.message || "News sentiment failed.";
+    els.newsStatusBanner.className = "status-banner error";
+  } finally {
+    els.newsFetchBtn.disabled = false;
   }
 }
 
@@ -686,6 +704,10 @@ function renderReferenceComparison(reference, best) {
 function toggleChat(open) {
   state.chatOpen = open ?? !state.chatOpen;
   els.chatPanel.hidden = !state.chatOpen;
+  els.chatFab.textContent = state.chatOpen ? "▾" : "🐂";
+  els.chatFab.title = state.chatOpen ? "Minimize chat" : "Chat with Bull";
+  els.chatFab.setAttribute("aria-label", state.chatOpen ? "Minimize chat with Bull" : "Open chat with Bull");
+  els.chatFab.classList.toggle("chat-fab--open", state.chatOpen);
   if (state.chatOpen) els.chatInput.focus();
 }
 
@@ -762,6 +784,7 @@ async function sendChatMessage(event) {
 
 function resetForm() {
   els.assetSelect.value = state.assets[0] || "";
+  els.newsAssetSelect.value = state.assets[0] || "";
   els.initialCash.value = "1000";
   els.fastWindow.value = "9";
   els.slowWindow.value = "20";
@@ -777,6 +800,10 @@ function resetForm() {
   els.referenceEmptyState.hidden = false;
   els.referenceContent.hidden = true;
   els.kpiRow.innerHTML = "";
+  els.newsEmptyState.hidden = false;
+  els.newsContent.hidden = true;
+  els.newsStatusBanner.textContent = "";
+  els.newsStatusBanner.className = "status-banner";
   els.newsSentimentBadge.textContent = "—";
   els.newsSentimentBadge.className = "pill pill--neutral";
   els.newsHeadlineList.innerHTML = "";
@@ -788,6 +815,7 @@ function resetForm() {
 function bindEvents() {
   els.runBtn.addEventListener("click", runBacktest);
   els.resetBtn.addEventListener("click", resetForm);
+  els.newsFetchBtn.addEventListener("click", () => loadNewsSentiment(els.newsAssetSelect.value));
   els.refreshBtn.addEventListener("click", async () => {
     await checkHealth();
     await loadAssets();

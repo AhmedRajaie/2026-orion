@@ -26,6 +26,7 @@
       <div class="select-wrap">
         <select id="sectionSelect" aria-label="Choose dashboard section">
           <option value="single">📈 Single-Stock Backtest</option>
+          <option value="news">📰 News & Sentiment</option>
           <option value="leaderboard">🏆 Strategy Leaderboard</option>
           <option value="reference">📚 Reference Comparison</option>
         </select>
@@ -107,18 +108,6 @@
           </article>
         </div>
 
-        <article id="newsPanel" class="panel summary-card news-panel">
-          <div class="panel__header panel__header--tight">
-            <div>
-              <h3>📰 Latest News & Sentiment</h3>
-              <p>Sample headlines for the selected stock, scored and summarized by an LLM — not a live news feed.</p>
-            </div>
-            <span id="newsSentimentBadge" class="pill pill--neutral">—</span>
-          </div>
-          <ul id="newsHeadlineList" class="news-headline-list"></ul>
-          <p id="newsSummary" class="news-summary"></p>
-        </article>
-
         <div class="content-grid">
           <article class="panel summary-card">
             <div class="panel__header panel__header--tight">
@@ -182,6 +171,39 @@
         <h3>No strategy run yet</h3>
         <p>Select an asset and run a backtest to inspect KPIs and charts.</p>
       </section>
+    </section>
+
+    <!-- ============================== TAB: News & Sentiment ============================== -->
+    <section class="tab-page" data-tab-page="news" hidden>
+      <section class="panel control-panel">
+        <div class="controls controls--news">
+          <label class="field">
+            <span>Stock</span>
+            <select id="newsAssetSelect" aria-label="Select stock for news"></select>
+          </label>
+        </div>
+        <div class="control-actions">
+          <button id="newsFetchBtn" class="btn btn--primary" type="button">Get Latest News</button>
+        </div>
+        <div id="newsStatusBanner" class="status-banner" role="status" aria-live="polite"></div>
+      </section>
+
+      <section id="newsEmptyState" class="empty-state">
+        <h3>No stock picked yet</h3>
+        <p>Pick a stock above and get a live sentiment score + LLM summary of its latest headlines.</p>
+      </section>
+
+      <article id="newsContent" class="panel summary-card news-panel" hidden>
+        <div class="panel__header panel__header--tight">
+          <div>
+            <h3 id="newsPanelTitle">📰 Latest News & Sentiment</h3>
+            <p>Sample headlines for the selected stock, scored and summarized by an LLM — not a live news feed.</p>
+          </div>
+          <span id="newsSentimentBadge" class="pill pill--neutral">—</span>
+        </div>
+        <ul id="newsHeadlineList" class="news-headline-list"></ul>
+        <p id="newsSummary" class="news-summary"></p>
+      </article>
     </section>
 
     <!-- ============================== TAB: Strategy Leaderboard ============================== -->

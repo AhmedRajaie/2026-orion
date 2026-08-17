@@ -1,34 +1,33 @@
 INFO:     Will watch for changes in these directories: ['/Users/kanzykabesh/Downloads/2026-orion-main']
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [45554] using StatReload
-INFO:     Started server process [45556]
+INFO:     Started reloader process [54306] using StatReload
+INFO:     Started server process [54308]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-INFO:     127.0.0.1:56817 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56832 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56834 - "GET /assets HTTP/1.1" 200 OK
-/Users/kanzykabesh/Downloads/2026-orion-main/src/tradinglab/features.py:64: RuntimeWarning: invalid value encountered in divide
-  volume_ratio = volume / vol_avg20
-INFO:     127.0.0.1:56836 - "GET /api/strategy-performance?symbol=COMI&initial_cash=1000&fast_window=9&slow_window=20 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56839 - "GET /api/news-sentiment?symbol=COMI HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56843 - "POST /api/chat HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56892 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56902 - "GET / HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:56902 - "GET /favicon.ico HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:56919 - "GET /health HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56919 - "GET /assets HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56919 - "OPTIONS /backtest HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56919 - "POST /backtest HTTP/1.1" 200 OK
-/Users/kanzykabesh/Downloads/2026-orion-main/src/tradinglab/features.py:64: RuntimeWarning: invalid value encountered in divide
-  volume_ratio = volume / vol_avg20
-INFO:     127.0.0.1:56921 - "GET /api/strategy-performance?symbol=ABUK&initial_cash=1000&fast_window=9&slow_window=20 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:56921 - "GET /api/news-sentiment?symbol=ABUK HTTP/1.1" 200 OK
-WARNING:  StatReload detected changes in 'src/tradinglab/env.py'. Reloading...
-INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [45556]
-INFO:     Started server process [52572]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     127.0.0.1:56695 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57453 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57475 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57475 - "GET /assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57475 - "POST /backtest HTTP/1.1" 200 OK
+/Users/kanzykabesh/Downloads/2026-orion-main/src/tradinglab/features.py:105: RuntimeWarning: invalid value encountered in divide
+  return volume / avg20
+INFO:     127.0.0.1:57477 - "GET /api/strategy-performance?symbol=ABUK&initial_cash=1000&fast_window=9&slow_window=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60847 - "GET /api/news-sentiment?symbol=ABUK HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60852 - "OPTIONS /backtest HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60852 - "POST /backtest HTTP/1.1" 200 OK
+/Users/kanzykabesh/Downloads/2026-orion-main/src/tradinglab/features.py:105: RuntimeWarning: invalid value encountered in divide
+  return volume / avg20
+INFO:     127.0.0.1:60854 - "GET /api/strategy-performance?symbol=ETEL&initial_cash=1000&fast_window=9&slow_window=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60871 - "POST /backtest HTTP/1.1" 200 OK
+/Users/kanzykabesh/Downloads/2026-orion-main/src/tradinglab/features.py:105: RuntimeWarning: invalid value encountered in divide
+  return volume / avg20
+INFO:     127.0.0.1:60873 - "GET /api/strategy-performance?symbol=ABUK&initial_cash=1000&fast_window=9&slow_window=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63569 - "OPTIONS /backtest HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63569 - "POST /backtest HTTP/1.1" 200 OK
+/Users/kanzykabesh/Downloads/2026-orion-main/src/tradinglab/features.py:105: RuntimeWarning: invalid value encountered in divide
+  return volume / avg20
+INFO:     127.0.0.1:63570 - "GET /api/strategy-performance?symbol=ABUK&initial_cash=1000&fast_window=9&slow_window=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63724 - "OPTIONS /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63724 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63726 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63734 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63767 - "POST /api/chat HTTP/1.1" 200 OK

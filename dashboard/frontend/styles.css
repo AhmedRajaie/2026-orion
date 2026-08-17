@@ -194,6 +194,8 @@ button { cursor: pointer; }
   margin-bottom: 10px;
 }
 
+.controls--news { grid-template-columns: minmax(0, 320px); }
+
 .field {
   display: flex;
   flex-direction: column;
@@ -393,6 +395,9 @@ th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--bord
   transition: transform 180ms ease, box-shadow 180ms ease;
 }
 .chat-fab:hover { transform: translateY(-2px) scale(1.05); box-shadow: 0 16px 36px rgba(53, 215, 168, 0.45); }
+.chat-fab--open { background: linear-gradient(135deg, var(--panel-strong), var(--panel-strong)); border: 1px solid var(--border); box-shadow: var(--shadow); }
+
+.chat-panel[hidden] { display: none; }
 
 .chat-panel {
   position: fixed;
