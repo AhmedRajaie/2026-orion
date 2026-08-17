@@ -16,33 +16,62 @@ Feature order (index matters — it is the contract everything relies on):
     6: return_5d     5-day cumulative return    medium-term momentum
     7: return_10d    10-day cumulative return   longer-term momentum
     8: volume_ratio  today's volume / 20-day average volume
+
+Each feature is defined ONCE, as a small @feature("name") function below. The
+registry is the single source of truth: FEATURE_NAMES and N_FEATURES are derived
+from it, so adding, removing or commenting out one function resizes every
+consumer — the datasets, the observation tensor and the RL env's observation
+space. Append new features at the END: some code hardcodes positions (e.g. RSI
+at index 3, in strategies/mean_reversion.py).
 """
 from __future__ import annotations
+from typing import Callable
 import numpy as np
 from .data_feed import DataFeed
 from .indicators import sma, ema, rsi, rolling_volatility
 
-FEATURE_NAMES = ["return", "p/sma_fast", "p/sma_slow", "rsi", "volatility",
-                  "macd_hist", "return_5d", "return_10d", "volume_ratio"]
-N_FEATURES = len(FEATURE_NAMES)
 SMA_FAST, SMA_SLOW = 10, 30
 
+# name -> function(close, ret, volume) -> (days,) column. Insertion-ordered.
+_REGISTRY: dict[str, Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]] = {}
 
-def feature_columns(feed: DataFeed, asset: int) -> np.ndarray:
-    """(days, N_FEATURES) for one stock, with NaNs where history is too short.
-    GIVEN — the canonical feature computation used everywhere.
 
-    New columns were APPENDED at the end on purpose, not inserted in the
-    middle: existing code elsewhere hardcodes a couple of feature positions
-    (e.g. RSI at index 3, in strategies/mean_reversion.py) — appending keeps
-    every one of those references correct without needing to touch them.
-    """
-    close = feed.close[:, asset]
-    ret = feed.returns[:, asset]
-    volume = feed.volume[:, asset]
+def feature(name: str):
+    """Register one feature column under `name`, in definition order."""
+    def register(fn):
+        _REGISTRY[name] = fn
+        return fn
+    return register
 
-    ema12, ema26 = ema(close, 12), ema(close, 26)
-    macd_line = ema12 - ema26
+
+@feature("return")
+def _f_return(close, ret, volume):
+    return ret
+
+
+@feature("p/sma_fast")
+def _f_p_sma_fast(close, ret, volume):
+    return close / sma(close, SMA_FAST) - 1.0
+
+
+@feature("p/sma_slow")
+def _f_p_sma_slow(close, ret, volume):
+    return close / sma(close, SMA_SLOW) - 1.0
+
+
+@feature("rsi")
+def _f_rsi(close, ret, volume):
+    return rsi(close, 14) / 100.0
+
+
+@feature("volatility")
+def _f_volatility(close, ret, volume):
+    return rolling_volatility(ret, 20)
+
+
+@feature("macd_hist")
+def _f_macd_hist(close, ret, volume):
+    macd_line = ema(close, 12) - ema(close, 26)
     # macd_line itself starts with NaN (ema26 needs 26 days of warm-up).
     # Feeding that straight into ema() would poison every value forever --
     # its recursive formula seeds from prices[:window].mean(), and one NaN in
@@ -51,13 +80,10 @@ def feature_columns(feed: DataFeed, asset: int) -> np.ndarray:
     first_valid = np.argmax(~np.isnan(macd_line))
     macd_signal = np.full_like(macd_line, np.nan)
     macd_signal[first_valid:] = ema(macd_line[first_valid:], 9)
-    macd_hist = macd_line - macd_signal
+    return macd_line - macd_signal
 
-    ret5 = np.full(feed.n_days, np.nan)
-    ret5[5:] = close[5:] / close[:-5] - 1.0
-    ret10 = np.full(feed.n_days, np.nan)
-    ret10[10:] = close[10:] / close[:-10] - 1.0
 
+<<<<<<< HEAD
     vol_avg20 = np.full(feed.n_days, np.nan)
     for i in range(19, feed.n_days):
         vol_avg20[i] = volume[i-19:i+1].mean()
@@ -67,19 +93,41 @@ def feature_columns(feed: DataFeed, asset: int) -> np.ndarray:
         out=np.full_like(volume, np.nan, dtype=np.float64),
         where=~np.isnan(vol_avg20)
     )
+=======
+@feature("return_5d")
+def _f_return_5d(close, ret, volume):
+    out = np.full(len(close), np.nan)
+    out[5:] = close[5:] / close[:-5] - 1.0
+    return out
+>>>>>>> origin/main
 
-    cols = [
-        ret,
-        close / sma(close, SMA_FAST) - 1.0,
-        close / sma(close, SMA_SLOW) - 1.0,
-        rsi(close, 14) / 100.0,
-        rolling_volatility(ret, 20),
-        # macd_hist,
-        # ret5,
-        # ret10,
-        # volume_ratio,
-    ]
-    return np.column_stack(cols)
+
+@feature("return_10d")
+def _f_return_10d(close, ret, volume):
+    out = np.full(len(close), np.nan)
+    out[10:] = close[10:] / close[:-10] - 1.0
+    return out
+
+
+@feature("volume_ratio")
+def _f_volume_ratio(close, ret, volume):
+    avg20 = np.full(len(volume), np.nan)
+    for i in range(19, len(volume)):
+        avg20[i] = volume[i-19:i+1].mean()
+    return volume / avg20
+
+
+FEATURE_NAMES = list(_REGISTRY)
+N_FEATURES = len(FEATURE_NAMES)
+
+
+def feature_columns(feed: DataFeed, asset: int) -> np.ndarray:
+    """(days, N_FEATURES) for one stock, with NaNs where history is too short.
+    GIVEN — the canonical feature computation used everywhere."""
+    close = feed.close[:, asset]
+    ret = feed.returns[:, asset]
+    volume = feed.volume[:, asset]
+    return np.column_stack([fn(close, ret, volume) for fn in _REGISTRY.values()])
 
 
 def features_at(feed: DataFeed, day: int) -> np.ndarray:

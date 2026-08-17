@@ -71,6 +71,8 @@ class PortfolioEnv(gym.Env):
         # --- train/test slicing: restrict the env to a day range ---
         start_day: int | None = None,   # first tradable day (default: lookback)
         end_day: int | None = None,     # last day + 1 (default: n_days - 1)
+        randomize_start: bool = False,  # True: each episode starts on a random day
+        min_episode_len: int = 20,      # only used when randomize_start=True
     ):
         super().__init__()
         self.feed = feed
@@ -86,6 +88,8 @@ class PortfolioEnv(gym.Env):
         self.rebalance_every = rebalance_every
         self.integer_shares = integer_shares
         self.capital = capital
+        self.randomize_start = randomize_start
+        self.min_episode_len = min_episode_len
 
         # A train env and a test env are just the same feed with different
         # day ranges. Train on the early years, test on the later ones — the
@@ -103,7 +107,18 @@ class PortfolioEnv(gym.Env):
         self._reset_state()
 
     def _reset_state(self):
-        self.t = self.start
+        if self.randomize_start:
+            # WHY: a fixed start day means every training episode replays the
+            # exact same historical sequence, over and over -- exactly the
+            # setup that lets an agent memorize "day 312 of this one path"
+            # instead of learning something that generalizes. Randomizing
+            # where each episode begins turns one fixed sequence into
+            # effectively thousands of different overlapping ones, using the
+            # SAME underlying data.
+            latest_possible = max(self.start, self.end - self.min_episode_len)
+            self.t = int(self.np_random.integers(self.start, latest_possible + 1))
+        else:
+            self.t = self.start
         self.current_weights = np.zeros(self.feed.n_assets)
         self.steps_since_rebalance = self.rebalance_every  # trade on first step
         self.port_history = []
