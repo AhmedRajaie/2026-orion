@@ -23,3 +23,12 @@ INFO:     127.0.0.1:56919 - "POST /backtest HTTP/1.1" 200 OK
   volume_ratio = volume / vol_avg20
 INFO:     127.0.0.1:56921 - "GET /api/strategy-performance?symbol=ABUK&initial_cash=1000&fast_window=9&slow_window=20 HTTP/1.1" 200 OK
 INFO:     127.0.0.1:56921 - "GET /api/news-sentiment?symbol=ABUK HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'src/tradinglab/env.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [45556]
+INFO:     Started server process [52572]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:56695 - "GET /health HTTP/1.1" 200 OK
