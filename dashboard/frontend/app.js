@@ -661,6 +661,16 @@ async function runModelCompare() {
       `/model_compare?symbol=${encodeURIComponent(symbol)}&seq_len=${seqLen}&hidden=${hidden}`
     );
 
+    const success = data && (data.success === undefined ? true : data.success === true);
+    if (!success) {
+      const errorMessage = data?.error || `Model comparison failed${data?.stage ? ' at ' + data.stage : ''}`;
+      throw new Error(errorMessage);
+    }
+
+    if (!data || !data.mlp || !data.lstm) {
+      throw new Error("Model comparison returned invalid data.");
+    }
+
     renderComparisonMetrics(data);
     setCompareStatus(`Model comparison complete for ${symbol}.`);
   } catch (error) {

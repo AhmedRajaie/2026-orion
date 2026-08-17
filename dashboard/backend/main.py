@@ -1,6 +1,9 @@
 """FastAPI backend for the dashboard."""
 from pathlib import Path
 import sys
+import time
+import traceback
+import logging
 
 import numpy as np
 import torch
@@ -21,7 +24,14 @@ from tradinglab.simulator import PortfolioSimulator
 app = FastAPI(title="Trading dashboard")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-feed = DataFeed.from_dir("data/egx")
+feed = DataFeed.from_dir(ROOT / "data" / "egx")
+
+logger = logging.getLogger("dashboard.backend")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 
 def _dates_to_strings(dates) -> list[str]:
@@ -156,18 +166,29 @@ def _train_lstm(X, y, seq_len: int = 5, epochs: int = 60, hidden: int = 32):
 def _regression_metrics(actual: np.ndarray, pred: np.ndarray) -> dict[str, float]:
     actual = np.asarray(actual, dtype=float)
     pred = np.asarray(pred, dtype=float)
+    if actual.size == 0 or pred.size == 0:
+        raise ValueError("Regression metrics require non-empty prediction and target arrays.")
+    if actual.shape != pred.shape:
+        raise ValueError("Regression metrics require actual and predicted arrays of the same shape.")
+
     diff = pred - actual
-    mse = float(np.mean(diff ** 2))
-    mae = float(np.mean(np.abs(diff)))
-    rmse = float(np.sqrt(mse))
-    ss_res = float(np.sum(diff ** 2))
-    ss_tot = float(np.sum((actual - actual.mean()) ** 2))
-    r2 = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 1.0
+    mse = np.mean(diff ** 2)
+    mae = np.mean(np.abs(diff))
+    rmse = np.sqrt(mse)
+    ss_res = np.sum(diff ** 2)
+    ss_tot = np.sum((actual - actual.mean()) ** 2)
+    r2 = 1.0
+    if np.isfinite(ss_tot) and ss_tot > 0:
+        r2 = 1.0 - ss_res / ss_tot
+
+    if not np.isfinite(mse) or not np.isfinite(mae) or not np.isfinite(rmse) or not np.isfinite(r2):
+        raise ValueError("Regression metrics produced non-finite values.")
+
     return {
-        "mse": round(mse, 6),
-        "rmse": round(rmse, 6),
-        "mae": round(mae, 6),
-        "r2": round(r2, 4),
+        "mse": float(round(float(mse), 6)),
+        "rmse": float(round(float(rmse), 6)),
+        "mae": float(round(float(mae), 6)),
+        "r2": float(round(float(r2), 4)),
     }
 
 
@@ -304,47 +325,337 @@ def prediction_portfolio(
     }
 
 
+# @app.get("/model_compare")
+# def model_compare(symbol: str = "ABUK", seq_len: int = 5, hidden: int = 16) -> dict[str, object]:
+#     request_start = time.time()
+#     stage = "validate input"
+#     logger.info("Incoming /model_compare request: symbol=%s, seq_len=%s, hidden=%s", symbol, seq_len, hidden)
+#     try:
+#         if symbol not in feed.symbols:
+#             raise HTTPException(status_code=404, detail="symbol not found")
+#         symbol_index = feed.symbols.index(symbol)
+
+#         X, y, _ = _build_dataset_with_indices(symbol_index)
+#         if len(X) < 2:
+#             raise HTTPException(status_code=400, detail="Not enough cleaned data rows for model comparison.")
+
+#         split = int(len(X) * 0.7)
+#         if split < 1 or split >= len(X):
+#             raise HTTPException(status_code=400, detail="Not enough data for a valid train/test split for model comparison.")
+
+#         stage = "train mlp"
+#         model = _train_mlp(X[:split], y[:split], epochs=20, hidden=hidden, n_hidden_layers=1)
+#         logger.info("MLP model trained for symbol=%s; train rows=%s, test rows=%s", symbol, split, len(X) - split)
+
+#         mlp_pred_train = model(torch.tensor(X[:split], dtype=torch.float32)).cpu().numpy()
+#         mlp_pred_test = model(torch.tensor(X[split:], dtype=torch.float32)).cpu().numpy()
+#         mlp_train_metrics = _regression_metrics(y[:split], mlp_pred_train)
+#         mlp_test_metrics = _regression_metrics(y[split:], mlp_pred_test)
+
+#         stage = "train lstm"
+
 @app.get("/model_compare")
-def model_compare(symbol: str = "ABUK", seq_len: int = 5, hidden: int = 16) -> dict[str, object]:
-    if symbol not in feed.symbols:
-        raise HTTPException(status_code=404, detail="symbol not found")
-    symbol_index = feed.symbols.index(symbol)
-    X, y, _ = _build_dataset_with_indices(symbol_index)
-    if len(X) == 0:
-        raise HTTPException(status_code=400, detail="Not enough data for model comparison.")
+def model_compare(
+    symbol: str = "ABUK",
+    seq_len: int = 5,
+    hidden: int = 16,
+) -> dict[str, object]:
 
-    split = int(len(X) * 0.7)
-    if split >= len(X):
-        raise HTTPException(status_code=400, detail="Not enough data for model comparison.")
+    request_start = time.time()
+    stage = "validate input"
 
-    model = _train_mlp(X[:split], y[:split], epochs=20, hidden=hidden, n_hidden_layers=1)
-    mlp_pred_train = model(torch.tensor(X[:split], dtype=torch.float32)).cpu().numpy()
-    mlp_pred_test = model(torch.tensor(X[split:], dtype=torch.float32)).cpu().numpy()
-    mlp_train_metrics = _regression_metrics(y[:split], mlp_pred_train)
-    mlp_test_metrics = _regression_metrics(y[split:], mlp_pred_test)
+    logger.info(
+        "Incoming /model_compare request: symbol=%s, seq_len=%s, hidden=%s",
+        symbol,
+        seq_len,
+        hidden,
+    )
 
     try:
-        lstm_model, Xseq, yseq = _train_lstm(X, y, seq_len=seq_len, epochs=60, hidden=hidden)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Not enough sequence data for LSTM.")
 
-    split_seq = int(len(Xseq) * 0.7)
-    lstm_pred_train = lstm_model(torch.tensor(Xseq[:split_seq], dtype=torch.float32)).cpu().numpy()
-    lstm_pred_test = lstm_model(torch.tensor(Xseq[split_seq:], dtype=torch.float32)).cpu().numpy()
-    lstm_train_metrics = _regression_metrics(yseq[:split_seq], lstm_pred_train)
-    lstm_test_metrics = _regression_metrics(yseq[split_seq:], lstm_pred_test)
+        # ---------------------------------------------------------
+        # Validate symbol
+        # ---------------------------------------------------------
 
-    return {
-        "symbol": symbol,
-        "mlp": {
-            "train": mlp_train_metrics,
-            "test": mlp_test_metrics,
-        },
-        "lstm": {
-            "train": lstm_train_metrics,
-            "test": lstm_test_metrics,
-        },
-    }
+        if symbol not in feed.symbols:
+            raise HTTPException(
+                status_code=404,
+                detail="symbol not found",
+            )
+
+        symbol_index = feed.symbols.index(symbol)
+
+        # ---------------------------------------------------------
+        # Build dataset
+        # ---------------------------------------------------------
+
+        X, y, _ = _build_dataset_with_indices(symbol_index)
+
+        if len(X) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail="Not enough cleaned data rows for model comparison.",
+            )
+
+        split = int(len(X) * 0.7)
+
+        if split < 1 or split >= len(X):
+            raise HTTPException(
+                status_code=400,
+                detail="Not enough data for a valid train/test split.",
+            )
+
+        # ---------------------------------------------------------
+        # Train MLP
+        # ---------------------------------------------------------
+
+        stage = "train mlp"
+
+        model = _train_mlp(
+            X[:split],
+            y[:split],
+            epochs=20,
+            hidden=hidden,
+            n_hidden_layers=1,
+        )
+
+        logger.info(
+            "MLP model trained for symbol=%s; train rows=%s; test rows=%s",
+            symbol,
+            split,
+            len(X) - split,
+        )
+
+        # ---------------------------------------------------------
+        # IMPORTANT
+        # Switch model into inference mode
+        # ---------------------------------------------------------
+
+        model.eval()
+
+        # ---------------------------------------------------------
+        # Predict WITHOUT gradients
+        # ---------------------------------------------------------
+
+        with torch.no_grad():
+
+            mlp_pred_train = model(
+                torch.tensor(
+                    X[:split],
+                    dtype=torch.float32,
+                )
+            ).cpu().numpy()
+
+            mlp_pred_test = model(
+                torch.tensor(
+                    X[split:],
+                    dtype=torch.float32,
+                )
+            ).cpu().numpy()
+
+        # ---------------------------------------------------------
+        # Metrics
+        # ---------------------------------------------------------
+
+        mlp_train_metrics = _regression_metrics(
+            y[:split],
+            mlp_pred_train,
+        )
+
+        mlp_test_metrics = _regression_metrics(
+            y[split:],
+            mlp_pred_test,
+        )
+
+        # ---------------------------------------------------------
+        # Continue with LSTM
+        # ---------------------------------------------------------
+
+        stage = "train lstm"
+
+        try:
+
+            lstm_model, Xseq, yseq = _train_lstm(
+                X,
+                y,
+                seq_len=seq_len,
+                epochs=60,
+                hidden=hidden,
+            )
+
+        except ValueError as exc:
+
+            raise HTTPException(
+                status_code=400,
+                detail=str(exc),
+            )
+
+        # ---------------------------------------------------------
+        # Validate sequence dataset
+        # ---------------------------------------------------------
+
+        if len(Xseq) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail="Not enough LSTM sequence rows for model comparison.",
+            )
+
+        split_seq = int(len(Xseq) * 0.7)
+
+        if split_seq < 1 or split_seq >= len(Xseq):
+            raise HTTPException(
+                status_code=400,
+                detail="Not enough LSTM data for a valid train/test split.",
+            )
+
+        logger.info(
+            "LSTM model trained for symbol=%s; sequence rows=%s; train rows=%s; test rows=%s",
+            symbol,
+            len(Xseq),
+            split_seq,
+            len(Xseq) - split_seq,
+        )
+
+        # ---------------------------------------------------------
+        # IMPORTANT
+        # Switch LSTM into evaluation mode
+        # ---------------------------------------------------------
+
+        lstm_model.eval()
+
+        # ---------------------------------------------------------
+        # Predict WITHOUT gradients
+        # ---------------------------------------------------------
+
+        with torch.no_grad():
+
+            lstm_pred_train = lstm_model(
+                torch.tensor(
+                    Xseq[:split_seq],
+                    dtype=torch.float32,
+                )
+            ).cpu().numpy()
+
+            lstm_pred_test = lstm_model(
+                torch.tensor(
+                    Xseq[split_seq:],
+                    dtype=torch.float32,
+                )
+            ).cpu().numpy()
+
+        # ---------------------------------------------------------
+        # Calculate metrics
+        # ---------------------------------------------------------
+
+        lstm_train_metrics = _regression_metrics(
+            yseq[:split_seq],
+            lstm_pred_train,
+        )
+
+        lstm_test_metrics = _regression_metrics(
+            yseq[split_seq:],
+            lstm_pred_test,
+        )
+
+        # ---------------------------------------------------------
+        # Build response
+        # ---------------------------------------------------------
+
+        response = {
+            "success": True,
+            "symbol": symbol,
+            "mlp": {
+                "train": mlp_train_metrics,
+                "test": mlp_test_metrics,
+            },
+            "lstm": {
+                "train": lstm_train_metrics,
+                "test": lstm_test_metrics,
+            },
+        }
+
+        duration = time.time() - request_start
+
+        logger.info(
+            "Model comparison completed for symbol=%s in %.3fs",
+            symbol,
+            duration,
+        )
+
+        return response
+
+    except HTTPException:
+
+        logger.warning(
+            "Model comparison failed at stage=%s for symbol=%s",
+            stage,
+            symbol,
+        )
+
+        raise
+
+    except Exception as exc:
+
+        tb = traceback.format_exc()
+
+        logger.exception(
+            "Unexpected error in /model_compare at stage=%s for symbol=%s",
+            stage,
+            symbol,
+        )
+
+        return {
+            "success": False,
+            "error": str(exc),
+            "traceback": tb,
+            "stage": stage,
+        }
+
+    #     try:
+    #         lstm_model, Xseq, yseq = _train_lstm(X, y, seq_len=seq_len, epochs=60, hidden=hidden)
+    #     except ValueError as exc:
+    #         raise HTTPException(status_code=400, detail=str(exc))
+
+    #     if len(Xseq) < 2:
+    #         raise HTTPException(status_code=400, detail="Not enough LSTM sequence rows for model comparison.")
+
+    #     split_seq = int(len(Xseq) * 0.7)
+    #     if split_seq < 1 or split_seq >= len(Xseq):
+    #         raise HTTPException(status_code=400, detail="Not enough LSTM data for a valid train/test split.")
+
+    #     logger.info("LSTM model trained for symbol=%s; sequence rows=%s, train rows=%s, test rows=%s", symbol, len(Xseq), split_seq, len(Xseq) - split_seq)
+    #     lstm_pred_train = lstm_model(torch.tensor(Xseq[:split_seq], dtype=torch.float32)).cpu().numpy()
+    #     lstm_pred_test = lstm_model(torch.tensor(Xseq[split_seq:], dtype=torch.float32)).cpu().numpy()
+    #     lstm_train_metrics = _regression_metrics(yseq[:split_seq], lstm_pred_train)
+    #     lstm_test_metrics = _regression_metrics(yseq[split_seq:], lstm_pred_test)
+
+    #     response = {
+    #         "success": True,
+    #         "symbol": symbol,
+    #         "mlp": {
+    #             "train": mlp_train_metrics,
+    #             "test": mlp_test_metrics,
+    #         },
+    #         "lstm": {
+    #             "train": lstm_train_metrics,
+    #             "test": lstm_test_metrics,
+    #         },
+    #     }
+    #     duration = time.time() - request_start
+    #     logger.info("Model comparison completed for symbol=%s in %.3fs", symbol, duration)
+    #     return response
+    # except HTTPException:
+    #     logger.warning("Model comparison failed at stage=%s for symbol=%s", stage, symbol)
+    #     raise
+    # except Exception as exc:
+    #     tb = traceback.format_exc()
+    #     logger.exception("Unexpected error in /model_compare at stage=%s for symbol=%s", stage, symbol)
+    #     return {
+    #         "success": False,
+    #         "error": str(exc),
+    #         "traceback": tb,
+    #         "stage": stage,
+    #     }
 
 
 @app.get("/backtest/{symbol}")
