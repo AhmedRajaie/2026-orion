@@ -18,7 +18,7 @@
 > In dashboard/backend/main.py, replace the single global `feed` with two named
 > feeds:
 >   feeds = {
->       "small": DataFeed.from_dir("data/egx", symbols=["COMI","HRHO","TMGH","SWDY","FWRY", "ABUK","ABUK"]),
+>       "small": DataFeed.from_dir("data/egx", symbols=["COMI","HRHO","TMGH","SWDY","FWRY", "ABUK"]),
 >       "full":  DataFeed.from_dir("data/egx"),
 >   }
 > Update every existing endpoint (`/universe`, `/prices/{symbol}`, `/backtest`,
