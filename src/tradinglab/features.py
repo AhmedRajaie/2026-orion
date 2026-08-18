@@ -83,23 +83,30 @@ def _f_macd_hist(close, ret, volume):
     return macd_line - macd_signal
 
 
-<<<<<<< HEAD
-    vol_avg20 = np.full(feed.n_days, np.nan)
-    for i in range(19, feed.n_days):
-        vol_avg20[i] = volume[i-19:i+1].mean()
-    volume_ratio = np.divide(
-        volume,
-        vol_avg20,
-        out=np.full_like(volume, np.nan, dtype=np.float64),
-        where=~np.isnan(vol_avg20)
-    )
-=======
+# <<<<<<< HEAD
+#     vol_avg20 = np.full(feed.n_days, np.nan)
+#     for i in range(19, feed.n_days):
+#         vol_avg20[i] = volume[i-19:i+1].mean()
+#     volume_ratio = np.divide(
+#         volume,
+#         vol_avg20,
+#         out=np.full_like(volume, np.nan, dtype=np.float64),
+#         where=~np.isnan(vol_avg20)
+#     )
+# =======
+# @feature("return_5d")
+# def _f_return_5d(close, ret, volume):
+#     out = np.full(len(close), np.nan)
+#     out[5:] = close[5:] / close[:-5] - 1.0
+#     return out
+# >>>>>>> origin/main
+
 @feature("return_5d")
 def _f_return_5d(close, ret, volume):
     out = np.full(len(close), np.nan)
     out[5:] = close[5:] / close[:-5] - 1.0
     return out
->>>>>>> origin/main
+
 
 
 @feature("return_10d")
