@@ -56,10 +56,13 @@ def chat(
     system: str | None = None,
     provider: str = DEFAULT_PROVIDER,
     max_tokens: int = 800,
+    _retries_left: int = 1,
 ) -> str:
     """Send messages, get back reply text. Never raises on a missing/rejected
     key -- degrades to a clearly-labeled mock reply instead, same safety net
-    as PROVIDER="mock"."""
+    as PROVIDER="mock". Retries once (short fixed backoff) on a 429 -- the
+    free-tier quota this project runs on throttles in short bursts (a few
+    seconds), not just a hard daily cap, so one retry recovers most of them."""
     if provider == "mock":
         return _mock_reply(messages, system)
 
@@ -67,7 +70,9 @@ def chat(
     if cfg is None or not cfg.get("api_key"):
         return _mock_reply(messages, system)
 
-    from openai import OpenAI
+    import time
+
+    from openai import OpenAI, RateLimitError
 
     client = OpenAI(api_key=cfg["api_key"], base_url=cfg["base_url"]) if cfg["base_url"] else OpenAI(api_key=cfg["api_key"])
     full_messages = ([{"role": "system", "content": system}] if system else []) + messages
@@ -76,5 +81,10 @@ def chat(
         resp = client.chat.completions.create(model=cfg["model"], messages=full_messages, max_tokens=max_tokens)
         content = resp.choices[0].message.content
         return content if content else _mock_reply(messages, system)
+    except RateLimitError:
+        if _retries_left > 0:
+            time.sleep(6)
+            return chat(messages, system=system, provider=provider, max_tokens=max_tokens, _retries_left=_retries_left - 1)
+        return _mock_reply(messages, system)
     except Exception:
         return _mock_reply(messages, system)

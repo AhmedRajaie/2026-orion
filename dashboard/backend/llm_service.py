@@ -142,6 +142,111 @@ def build_dashboard_context(context: dict[str, Any] | None) -> str:
     return json.dumps(context, indent=2, default=str)
 
 
+def _pct(v: Any) -> str:
+    return f"{v:+.2f}%" if isinstance(v, (int, float)) else "n/a"
+
+
+def _num(v: Any, digits: int = 2) -> str:
+    return f"{v:.{digits}f}" if isinstance(v, (int, float)) else "n/a"
+
+
+def local_fallback_answer(message: str, context: dict[str, Any] | None) -> str:
+    """Bull's own numbers-only comeback when the real LLM call is unavailable
+    (rate-limited, no key, etc.). No AI writing involved -- just Bull's voice
+    wrapped around whatever's actually in `context`, so a throttled API never
+    means a useless reply. Still only ever states numbers that are in `context`."""
+    context = context or {}
+    q = message.lower()
+    lines: list[str] = []
+
+    best = context.get("best_strategy") or {}
+    ma = context.get("ma_crossover")
+    weekly = context.get("weekly_mean_reversion")
+    tiktok = context.get("tiktok_strategy")
+    news = context.get("news_sentiment")
+    stock = context.get("selected_stock_backtest")
+    seeds = best.get("seed_stability")
+
+    wants_best = any(w in q for w in ["best", "top", "winner", "strongest"])
+    wants_bench = any(w in q for w in ["benchmark", "buy and hold", "equal weight", "equal-weight"])
+    wants_ma = any(w in q for w in ["crossover", "moving average", " ma "])
+    wants_weekly = "weekly" in q or "mean reversion" in q
+    wants_tiktok = "tiktok" in q
+    wants_news = any(w in q for w in ["news", "sentiment", "headline"])
+    wants_seed = any(w in q for w in ["seed", "stable", "stability", "luck", "robust"])
+    wants_stock = any(w in q for w in ["this stock", "selected stock", "backtest"])
+
+    if wants_best and best:
+        m = best.get("metrics", {})
+        lines.append(
+            f"THE BELT GOES TO {best.get('name', 'the best strategy')} ({best.get('model_type', '?')})! "
+            f"Return {_pct(m.get('return_pct'))}, max drawdown {_pct(m.get('max_drawdown_pct'))}, "
+            f"Sharpe {_num(m.get('sharpe'))}, final value {_num(m.get('final_value'))} EGP."
+        )
+    if wants_seed and seeds:
+        lines.append(
+            f"Seed check across {len(seeds.get('seeds', []))} seeds: mean return {_pct(seeds.get('mean_return_pct'))}, "
+            f"std {_num(seeds.get('std_return_pct'))} pts, profitable in "
+            f"{round((seeds.get('profitable_seed_fraction') or 0) * 100)}% of runs. {seeds.get('verdict', '')}"
+        )
+    if (wants_bench or (wants_best and not best)) and best.get("comparison_table"):
+        bench_row = next((r for r in best["comparison_table"] if "Benchmark" in r.get("Strategy", "")), None)
+        if bench_row:
+            lines.append(
+                f"Benchmark (equal-weight): return {_pct(bench_row.get('Return %'))}, "
+                f"drawdown {_pct(bench_row.get('Max Drawdown %'))}, Sharpe {_num(bench_row.get('Sharpe'))}."
+            )
+    if wants_ma and ma:
+        lines.append(
+            f"MA Crossover: return {_pct(ma.get('return_percent'))}, drawdown {_pct(ma.get('max_drawdown_percent'))}, "
+            f"Sharpe {_num(ma.get('sharpe'))}, final value {_num(ma.get('final_value'))} EGP."
+        )
+    if wants_weekly and weekly:
+        lines.append(
+            f"Weekly Mean Reversion: return {_pct(weekly.get('return_percent'))}, "
+            f"drawdown {_pct(weekly.get('max_drawdown_percent'))}, Sharpe {_num(weekly.get('sharpe'))}."
+        )
+    if wants_tiktok and tiktok:
+        lines.append(
+            f"TikTok Guru Strategy: return {_pct(tiktok.get('return_percent'))}, "
+            f"drawdown {_pct(tiktok.get('max_drawdown_percent'))}, Sharpe {_num(tiktok.get('sharpe'))}."
+        )
+    if wants_news and news:
+        lines.append(f"News sentiment for {news.get('symbol', 'the stock')}: score {news.get('score')} -- {news.get('summary', '')}")
+    if wants_stock and stock:
+        lines.append(
+            f"{stock.get('symbol', 'This stock')}'s MA-crossover backtest: return {_pct(stock.get('return_percent'))}, "
+            f"drawdown {_pct(stock.get('max_drawdown_percent'))}, final value {_num(stock.get('final_value'))} EGP."
+        )
+
+    if lines:
+        prefix = "(quick numbers -- my AI brain is rate-limited right now, but I never bluff on data) "
+        return prefix + " ".join(lines)
+
+    available = []
+    if best:
+        available.append(f"best strategy = {best.get('name')}")
+    if ma:
+        available.append(f"MA crossover on {context.get('selected_symbol', '?')}")
+    if weekly:
+        available.append("weekly mean reversion")
+    if tiktok:
+        available.append("tiktok strategy")
+    if news:
+        available.append(f"news sentiment for {news.get('symbol')}")
+
+    if not available:
+        return (
+            "Whoa, hold up -- nothing's loaded on this dashboard yet! Run a backtest or pull up some stock news "
+            "and I'll come back swinging with real numbers. Can't hype what isn't on screen."
+        )
+    return (
+        "My AI brain's throttled for a second (rate limit, not laziness) so I can't freestyle this one, but here's "
+        f"what's actually loaded right now: {', '.join(available)}. Ask me about one of those by name and I'll shout "
+        "the real numbers at you."
+    )
+
+
 def chat_reply(
     message: str,
     history: list[dict[str, str]] | None = None,
@@ -153,4 +258,7 @@ def chat_reply(
         notes="\n".join(f"- {n}" for n in MARKET_NOTES),
     )
     messages = list(history or []) + [{"role": "user", "content": message}]
-    return chat(messages, system=system, provider=provider, max_tokens=500)
+    reply = chat(messages, system=system, provider=provider, max_tokens=500)
+    if reply.startswith("[MOCK REPLY]"):
+        return local_fallback_answer(message, context)
+    return reply
