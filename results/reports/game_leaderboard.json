@@ -1,0 +1,664 @@
+[
+  {
+    "id": 1787048445300,
+    "played_at": "2026-08-18T10:20:45Z",
+    "profit_pct": 21.892817875995114,
+    "final_value": 1218928.1787599511,
+    "volatility_pct": 28.117741227730786,
+    "sharpe": 9.788951730353952,
+    "max_drawdown_pct": 1.9475320859143133,
+    "fees_paid": 5507.5,
+    "fee_enabled": true,
+    "start_cash": 1000000.0,
+    "start_date": "2025-07-06",
+    "end_date": "2025-08-04",
+    "is_replay": false,
+    "holdings_path": [
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ],
+      [
+        "EFID",
+        "COMI"
+      ]
+    ]
+  },
+  {
+    "id": 1787048536609,
+    "played_at": "2026-08-18T10:22:16Z",
+    "profit_pct": 7.115935727739968,
+    "final_value": 107115.93572773997,
+    "volatility_pct": 20.895051176015627,
+    "sharpe": 4.826627168583297,
+    "max_drawdown_pct": 1.9868110085878903,
+    "fees_paid": 550.7499999999999,
+    "fee_enabled": true,
+    "start_cash": 100000.0,
+    "start_date": "2025-07-06",
+    "end_date": "2025-08-04",
+    "is_replay": false,
+    "holdings_path": [
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ],
+      [
+        "COMI",
+        "ABUK"
+      ]
+    ]
+  },
+  {
+    "id": 1787047561655,
+    "played_at": "2026-08-18T10:06:01Z",
+    "profit_pct": 7.086546308264137,
+    "final_value": 107086.54630826414,
+    "volatility_pct": 23.044681003849902,
+    "sharpe": 2.190997876481184,
+    "max_drawdown_pct": 5.677010687561604,
+    "fees_paid": 550.7499999999999,
+    "fee_enabled": true,
+    "start_cash": 100000.0,
+    "start_date": "2025-07-01",
+    "end_date": "2025-08-28",
+    "is_replay": false,
+    "holdings_path": [
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ]
+    ]
+  },
+  {
+    "id": 1787047319538,
+    "played_at": "2026-08-18T10:01:59Z",
+    "profit_pct": 2.380451900098822,
+    "final_value": 102380.45190009882,
+    "volatility_pct": 18.151388964589525,
+    "sharpe": 2.2143145389609815,
+    "max_drawdown_pct": 3.0018113111714078,
+    "fees_paid": 550.7499999999999,
+    "fee_enabled": true,
+    "start_cash": 100000.0,
+    "start_date": "2025-07-06",
+    "end_date": "2025-08-04",
+    "is_replay": false,
+    "holdings_path": [
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ],
+      [
+        "COMI",
+        "HRHO"
+      ]
+    ]
+  },
+  {
+    "id": 1787047935792,
+    "played_at": "2026-08-18T10:12:15Z",
+    "profit_pct": -2.0439130471538665,
+    "final_value": 97956.08695284613,
+    "volatility_pct": 22.52652919958659,
+    "sharpe": -0.7772644616243907,
+    "max_drawdown_pct": 5.685294743451416,
+    "fees_paid": 550.7499999999999,
+    "fee_enabled": true,
+    "start_cash": 100000.0,
+    "start_date": "2025-07-06",
+    "end_date": "2025-08-04",
+    "is_replay": false,
+    "holdings_path": [
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ],
+      [
+        "FWRY",
+        "TMGH"
+      ]
+    ]
+  },
+  {
+    "id": 1787048398587,
+    "played_at": "2026-08-18T10:19:58Z",
+    "profit_pct": -5.172540278801217,
+    "final_value": 948274.5972119878,
+    "volatility_pct": 13.669981556282332,
+    "sharpe": -4.542177847934611,
+    "max_drawdown_pct": 5.544024164932145,
+    "fees_paid": 5507.5,
+    "fee_enabled": true,
+    "start_cash": 1000000.0,
+    "start_date": "2025-07-06",
+    "end_date": "2025-08-04",
+    "is_replay": false,
+    "holdings_path": [
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ],
+      [
+        "SWDY",
+        "TMGH"
+      ]
+    ]
+  }
+]

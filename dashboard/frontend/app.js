@@ -218,10 +218,18 @@ async function init() {
   });
   initChatWidget();
 
-  await runSimulation();
-  await runBaselineEquity();
-  await runStrategyComparison();
-  await runComparison();
+  // Each panel's startup fetch is independent — one backend failure (e.g. a
+  // strategy checkpoint mismatch) shouldn't take the rest of the page down
+  // with it, and MUST NOT prevent initTabs() from running below, or every
+  // tab (including ones with no connection to the failure) becomes
+  // permanently unclickable for the rest of the session.
+  for (const fn of [runSimulation, runBaselineEquity, runStrategyComparison, runComparison]) {
+    try {
+      await fn();
+    } catch (e) {
+      console.error(`${fn.name} failed during init:`, e);
+    }
+  }
 
   initTabs();
 }
@@ -241,6 +249,7 @@ function initTabs() {
     if (tab === "models" && !state.modelsInitialized) { state.modelsInitialized = true; initModelComparison(); }
     if (tab === "strategies" && !state.strategiesInitialized) { state.strategiesInitialized = true; initStrategiesTab(); }
     if (tab === "performance" && !state.performanceInitialized) { state.performanceInitialized = true; loadPerformanceResults(); }
+    if (tab === "game" && !state.gameInitialized) { state.gameInitialized = true; initGame(); }
   });
 }
 
@@ -1387,6 +1396,575 @@ async function sendChatMessage() {
   } catch (e) {
     pending.remove();
     appendChatMessage("model", `Sorry, something went wrong: ${e.message}`, "error");
+  }
+}
+
+// ---------------------------------------------- asset management game ----
+// The rules run entirely client-side against price data fetched once, same
+// pattern as everything else in this file (main.py is stateless REST; app.js
+// state drives all interaction). dayIndex is the last APPLIED day (-1 = the
+// player hasn't picked an opening pair yet). Each "apply" recomputes shares
+// from `pendingSelection` at the prior close (fee only charged when the
+// selection actually differs from current holdings), then marks to market
+// at the next day's close — see PR notes for the exact accounting.
+const game = {
+  config: null, prices: null, benchmarks: null,
+  dayIndex: -1, holdings: [], shares: {}, pendingSelection: [],
+  valueHistory: [],
+  snapshots: [], // snapshots[i] = full state right after day i was applied (i = 0..num_days-1) — random-access, non-destructive, so "jump to day N" and Prev are the same operation
+  finished: false, playTimer: null,
+  hasCompletedOnce: false, // true from the first time day num_days-1 is reached, for the rest of the session
+  isReplay: false,         // true once the player jumps back to an earlier day AFTER hasCompletedOnce — gates auto-save vs explicit "save replay"
+  feeEnabled: true, custodyFeeEnabled: false, feesPaidTotal: 0,
+};
+
+// Setup screen fetches only the date bounds up front — config/prices/
+// benchmarks are fetched with the PLAYER'S chosen cash/date-range/fee
+// settings only once they press "Start game" (gameStartWithSetup), which is
+// the actual fix for the setup inputs previously being collected and then
+// silently ignored: nothing downstream read them.
+async function initGame() {
+  try {
+    const bounds = await fetchJSON(`${API}/game/date-bounds`);
+    document.getElementById("gameSetupStart").min = bounds.min_date;
+    document.getElementById("gameSetupStart").max = bounds.max_date;
+    document.getElementById("gameSetupEnd").min = bounds.min_date;
+    document.getElementById("gameSetupEnd").max = bounds.max_date;
+  } catch (e) {
+    document.getElementById("gameSetupHint").textContent = `Couldn't load valid date range: ${e.message}`;
+  }
+
+  document.getElementById("gameSetupStartButton").addEventListener("click", gameStartWithSetup);
+  document.getElementById("gameChangeSetupButton").addEventListener("click", () => {
+    if (game.playTimer) gameTogglePlay();
+    document.getElementById("gamePlayArea").style.display = "none";
+    document.getElementById("gameSetupPanel").style.display = "block";
+  });
+  document.getElementById("gamePrevButton").addEventListener("click", () => gameJumpToDay(game.dayIndex - 1));
+  document.getElementById("gameNextButton").addEventListener("click", gameApplyDay);
+  document.getElementById("gamePlayButton").addEventListener("click", gameTogglePlay);
+  document.getElementById("gameResetButton").addEventListener("click", gameReset);
+  document.getElementById("gameJumpButton").addEventListener("click", () => {
+    gameJumpToDay(Number(document.getElementById("gameJumpInput").value));
+  });
+  document.getElementById("gameSaveReplayButton").addEventListener("click", gameSaveAttempt);
+  document.getElementById("gameLeaderboardRefresh").addEventListener("click", loadGameLeaderboard);
+
+  loadGameLeaderboard();
+}
+
+async function gameStartWithSetup() {
+  const hint = document.getElementById("gameSetupHint");
+  const startCash = Number(document.getElementById("gameSetupCash").value);
+  const startDate = document.getElementById("gameSetupStart").value;
+  const endDate = document.getElementById("gameSetupEnd").value;
+  const feeEnabled = document.getElementById("gameSetupFeeEnabled").checked;
+  const custodyFeeEnabled = document.getElementById("gameSetupCustodyEnabled").checked;
+
+  if (!startCash || startCash <= 0) { hint.textContent = "Starting cash must be a positive number."; return; }
+  if (!startDate || !endDate) { hint.textContent = "Pick both a start and end date."; return; }
+  if (startDate >= endDate) { hint.textContent = "Start date must be before end date."; return; }
+
+  hint.textContent = "Loading…";
+  const startButton = document.getElementById("gameSetupStartButton");
+  startButton.disabled = true;
+  try {
+    const params = new URLSearchParams({ start_date: startDate, end_date: endDate, start_cash: startCash });
+    const benchParams = new URLSearchParams({
+      start_date: startDate, end_date: endDate, start_cash: startCash,
+      fee_enabled: feeEnabled, custody_fee_enabled: custodyFeeEnabled,
+    });
+    const [config, prices, benchmarks] = await Promise.all([
+      fetchJSON(`${API}/game/config?${params}`),
+      fetchJSON(`${API}/game/prices?${params}`),
+      fetchJSON(`${API}/game/benchmarks?${benchParams}`),
+    ]);
+
+    game.config = config;
+    game.prices = prices;
+    game.benchmarks = benchmarks;
+    game.feeEnabled = feeEnabled;
+    game.custodyFeeEnabled = custodyFeeEnabled;
+    // A genuinely new setup starts a fresh session — a prior run's replay
+    // bookkeeping shouldn't leak into a different starting-cash/date-range game.
+    game.hasCompletedOnce = false;
+    game.isReplay = false;
+    game.snapshots = [];
+
+    document.getElementById("gameJumpMax").textContent = config.num_days - 1;
+    document.getElementById("gameJumpInput").max = config.num_days - 1;
+    document.getElementById("gameRulesText").textContent =
+      `Start with ${startCash.toLocaleString()} EGP, always invested exactly 50/50 across 2 of the 8 stocks below — `
+      + `never in cash, never 1 or 3+. Each simulated day, decide to KEEP your pair or SWITCH, using only what's shown up `
+      + `to that point (no peeking ahead). Step through ${config.start_date} → ${config.end_date}.`
+      + (feeEnabled ? ` Trading fees are ON (EFG Hermes schedule, ~${config.fee.effective_pct.toFixed(2)}% + EGP ${config.fee.min_egp} min per trade).` : " Trading fees are OFF.");
+    document.getElementById("gameChartNote").textContent =
+      `All lines start at ${startCash.toLocaleString()} EGP and reveal day by day alongside your play — no benchmark shows you the future either.`;
+
+    buildGameTiles();
+    gameReset();
+    document.getElementById("gameSetupPanel").style.display = "none";
+    document.getElementById("gamePlayArea").style.display = "block";
+  } catch (e) {
+    hint.textContent = `Couldn't start the game: ${e.message}`;
+  } finally {
+    startButton.disabled = false;
+  }
+}
+
+function buildGameTiles() {
+  const grid = document.getElementById("gameTileGrid");
+  grid.innerHTML = game.config.symbols.map((sym) => `
+    <div class="graph-card game-tile" data-symbol="${sym}">
+      <h3>${sym} <span class="held-badge" style="display:none">Held</span></h3>
+      <div class="chart-wrap game-tile-chart"><canvas id="gameTile-${sym}"></canvas></div>
+    </div>
+  `).join("");
+  grid.querySelectorAll(".game-tile").forEach((tile) => {
+    tile.addEventListener("click", () => gameToggleSelection(tile.dataset.symbol));
+  });
+}
+
+function gameToggleSelection(symbol) {
+  if (game.finished) return;
+  const i = game.pendingSelection.indexOf(symbol);
+  if (i >= 0) {
+    game.pendingSelection.splice(i, 1);
+  } else if (game.pendingSelection.length < 2) {
+    game.pendingSelection.push(symbol);
+  } else {
+    document.getElementById("gameHint").textContent = "Only 2 holdings allowed — deselect one first.";
+    return;
+  }
+  renderGameTiles();
+}
+
+function renderGameTiles() {
+  const revealCount = game.dayIndex + 1; // how many played days are visible so far
+  game.config.symbols.forEach((sym) => {
+    const tile = document.querySelector(`.game-tile[data-symbol="${sym}"]`);
+    const held = game.pendingSelection.includes(sym);
+    tile.classList.toggle("held", held);
+    tile.querySelector(".held-badge").style.display = held ? "inline-block" : "none";
+
+    const dates = game.prices[sym].dates.slice(0, revealCount);
+    const close = game.prices[sym].close.slice(0, revealCount);
+    destroy(`gameTile-${sym}`);
+    const canvas = document.getElementById(`gameTile-${sym}`);
+    const up = close.length > 1 && close[close.length - 1] >= close[0];
+    charts[`gameTile-${sym}`] = new Chart(canvas, {
+      type: "line",
+      data: { labels: dates, datasets: [{
+        data: close, borderColor: up ? COLOR.good : COLOR.critical, borderWidth: 1.5,
+        pointRadius: 0, tension: 0.15, fill: false,
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: { x: { display: false }, y: { display: false } },
+      },
+    });
+  });
+
+  const label = game.dayIndex === -1
+    ? "Day 0 — pick your opening pair (no chart data yet, no lookahead)"
+    : `Day ${game.dayIndex + 1} of ${game.config.num_days} — ${game.config.trading_days[game.dayIndex]}`;
+  document.getElementById("gameDayLabel").textContent = label;
+
+  const canAdvance = game.pendingSelection.length === 2 && !game.finished;
+  document.getElementById("gameNextButton").disabled = !canAdvance;
+  // Play must be just as gated as Next — otherwise clicking Play before a
+  // pair is selected starts the auto-advance interval, which immediately
+  // no-ops and cancels itself on its first tick (looks like "Play does
+  // nothing" from the user's side, since it flips back within ~1 second).
+  document.getElementById("gamePlayButton").disabled = !canAdvance && !game.playTimer;
+  document.getElementById("gameHint").textContent = game.finished
+    ? "Game finished — press Reset to play again."
+    : (canAdvance ? "" : "Select exactly 2 tiles to hold before advancing or pressing Play.");
+}
+
+function gameGetSharesValue(shares, dayIdx) {
+  return Object.entries(shares).reduce((sum, [sym, n]) => sum + n * game.prices[sym].close[dayIdx], 0);
+}
+
+// Mirrors dashboard/backend/game_service.py's compute_trade_fee exactly —
+// EFG Hermes schedule, summed to one effective rate (~0.55%) with a
+// combined EGP 15 practical minimum per trade. game.config.fee comes from
+// /game/config so a rate change on the backend doesn't need a frontend edit.
+function computeTradeFee(tradeValue) {
+  if (!game.feeEnabled || tradeValue <= 0) return 0;
+  return Math.max(tradeValue * game.config.fee.effective_pct / 100, game.config.fee.min_egp);
+}
+
+function isYearEnd(dateStr) {
+  const d = new Date(dateStr + "T00:00:00Z");
+  return d.getUTCMonth() === 11 && d.getUTCDate() === 31; // Dec 31
+}
+
+function gameApplyDay() {
+  if (game.finished || game.pendingSelection.length !== 2) return;
+  const [a, b] = game.pendingSelection;
+  const sameHoldings = game.holdings.length === 2 && game.holdings.includes(a) && game.holdings.includes(b);
+  let feesThisStep = 0;
+
+  if (game.dayIndex === -1) {
+    // Opening buy: no prior game history, so this is 2 buy trades (buy A,
+    // buy B) against the starting cash — day 0's value is start_cash minus
+    // those two trades' fees, not exactly start_cash when fees are on.
+    const cash = game.config.start_cash;
+    const half = cash / 2;
+    const feeA = computeTradeFee(half);
+    const feeB = computeTradeFee(half);
+    game.shares = { [a]: (half - feeA) / game.prices[a].close[0], [b]: (half - feeB) / game.prices[b].close[0] };
+    game.holdings = [a, b];
+    feesThisStep = feeA + feeB;
+    game.valueHistory = [cash - feesThisStep];
+    game.dayIndex = 0;
+  } else {
+    const priorClose = game.dayIndex; // "prior close" for the day we're advancing INTO
+    const nextIdx = game.dayIndex + 1;
+    const currentValue = game.valueHistory[game.valueHistory.length - 1];
+    let newShares;
+
+    if (sameHoldings) {
+      newShares = game.shares; // KEEP: no trades, no fees
+    } else {
+      // SWITCH = 4 trades: sell A, sell B (at the prior close, against the
+      // CURRENT 50/50 split), then buy C, buy D with whatever cash remains
+      // after the sell fees. Each trade's fee is computed on its own value.
+      const sellHalf = currentValue / 2;
+      const sellFeeA = computeTradeFee(sellHalf);
+      const sellFeeB = computeTradeFee(sellHalf);
+      const cashAfterSells = currentValue - sellFeeA - sellFeeB;
+
+      const buyHalf = cashAfterSells / 2;
+      const buyFeeC = computeTradeFee(buyHalf);
+      const buyFeeD = computeTradeFee(buyHalf);
+      newShares = {
+        [a]: (buyHalf - buyFeeC) / game.prices[a].close[priorClose],
+        [b]: (buyHalf - buyFeeD) / game.prices[b].close[priorClose],
+      };
+      feesThisStep = sellFeeA + sellFeeB + buyFeeC + buyFeeD;
+    }
+
+    let newValue = gameGetSharesValue(newShares, nextIdx);
+
+    // Annual custody fee — a level markdown applied once per Dec-31 inside
+    // the played range, off by default (most playthroughs are weeks long).
+    if (game.custodyFeeEnabled && isYearEnd(game.config.trading_days[nextIdx])) {
+      const custodyFee = newValue * game.config.fee.annual_custody_pct / 100;
+      const factor = (newValue - custodyFee) / newValue;
+      for (const sym of Object.keys(newShares)) newShares[sym] *= factor;
+      newValue -= custodyFee;
+      feesThisStep += custodyFee;
+    }
+
+    game.shares = newShares;
+    game.holdings = [a, b];
+    game.valueHistory.push(newValue);
+    game.dayIndex = nextIdx;
+
+    showGameFlourish((newValue - currentValue) / currentValue * 100);
+  }
+
+  game.feesPaidTotal += feesThisStep;
+
+  // Random-access snapshot for this day — enables both Prev (jump to
+  // dayIndex-1) and jump-to-any-day replay as the exact same operation,
+  // non-destructively (unlike the old pop()-based undo, revisiting a day
+  // doesn't erase it, so re-diverging from it works more than once).
+  game.snapshots[game.dayIndex] = {
+    holdings: [...game.holdings], shares: { ...game.shares }, valueHistory: [...game.valueHistory],
+    feesPaidTotal: game.feesPaidTotal,
+  };
+
+  game.pendingSelection = [...game.holdings];
+  game.finished = game.dayIndex === game.config.num_days - 1;
+  renderGameTiles();
+  renderGameKpis();
+  renderGameEquityChart();
+  if (game.finished) {
+    if (game.playTimer) gameTogglePlay();
+    renderGameSummary();
+  }
+}
+
+function gameJumpToDay(n) {
+  n = Math.max(-1, Math.min(n, game.snapshots.length - 1));
+  if (game.playTimer) gameTogglePlay();
+
+  // "Replay mode" per spec is specifically post-completion exploration —
+  // jumping around before ever finishing is just ordinary undo, no
+  // leaderboard implications.
+  if (game.hasCompletedOnce) game.isReplay = true;
+
+  if (n === -1) {
+    game.dayIndex = -1; game.holdings = []; game.shares = {}; game.valueHistory = []; game.feesPaidTotal = 0;
+  } else {
+    const snap = game.snapshots[n];
+    if (!snap) return; // that day was never actually reached this session
+    game.dayIndex = n;
+    game.holdings = snap.holdings;
+    game.shares = snap.shares;
+    game.valueHistory = snap.valueHistory;
+    game.feesPaidTotal = snap.feesPaidTotal; // fees paid AS OF that day, not the session's running total
+  }
+  game.pendingSelection = [...game.holdings];
+  game.finished = false;
+  document.getElementById("gameSummaryPanel").style.display = "none";
+  document.getElementById("gameFlourishSlot").innerHTML = "";
+  renderGameTiles();
+  renderGameKpis();
+  renderGameEquityChart();
+}
+
+function gameTogglePlay() {
+  const btn = document.getElementById("gamePlayButton");
+  if (game.playTimer) {
+    clearInterval(game.playTimer);
+    game.playTimer = null;
+    btn.textContent = "▶ Play";
+    renderGameTiles(); // re-enable Next/Play button states now that autoplay stopped
+  } else {
+    if (game.finished || game.pendingSelection.length !== 2) return; // button should be disabled anyway; belt and suspenders
+    btn.textContent = "⏸ Pause";
+    game.playTimer = setInterval(() => {
+      // Keeping the same pair is the only automatic move Play makes — it
+      // never switches on your behalf. Stops on its own once the game ends.
+      if (game.finished || game.pendingSelection.length !== 2) { gameTogglePlay(); return; }
+      gameApplyDay();
+    }, 1100);
+  }
+}
+
+function gameReset() {
+  if (game.playTimer) { clearInterval(game.playTimer); game.playTimer = null; }
+  document.getElementById("gamePlayButton").textContent = "▶ Play";
+  // hasCompletedOnce/isReplay/snapshots intentionally survive a Reset within
+  // the same tab session — Reset starts a fresh attempt, it doesn't erase
+  // "have I already saved an original run this session" bookkeeping.
+  Object.assign(game, { dayIndex: -1, holdings: [], shares: {}, pendingSelection: [], valueHistory: [], finished: false, feesPaidTotal: 0 });
+  document.getElementById("gameSummaryPanel").style.display = "none";
+  document.getElementById("gameFlourishSlot").innerHTML = "";
+  document.getElementById("gameReplayControls").style.display = game.hasCompletedOnce ? "flex" : "none";
+  renderGameTiles();
+  renderGameKpis();
+  renderGameEquityChart();
+}
+
+function showGameFlourish(pct) {
+  const slot = document.getElementById("gameFlourishSlot");
+  const up = pct >= 0;
+  slot.innerHTML = `<span class="game-flourish ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}% ${up ? "📈" : "📉"}</span>`;
+}
+
+// Mirrors dashboard/backend/game_service.py's _risk_stats exactly (0%
+// risk-free rate, 252-day annualization) so the player's own numbers are
+// computed the same way as the server-side benchmark numbers they're
+// compared against.
+const TRADING_DAYS = 252;
+function computeRiskStats(values) {
+  if (values.length < 2) return { volatility_pct: 0, sharpe: 0, max_drawdown_pct: 0 };
+  const returns = values.slice(1).map((v, i) => v / values[i] - 1);
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((a, b) => a + (b - mean) ** 2, 0) / returns.length;
+  const std = Math.sqrt(variance);
+  let peak = -Infinity, maxDrawdown = 0;
+  for (const v of values) { peak = Math.max(peak, v); maxDrawdown = Math.max(maxDrawdown, (peak - v) / peak); }
+  return {
+    volatility_pct: std * Math.sqrt(TRADING_DAYS) * 100,
+    sharpe: std > 0 ? (mean / std) * Math.sqrt(TRADING_DAYS) : 0,
+    max_drawdown_pct: maxDrawdown * 100,
+  };
+}
+
+function renderGameKpis() {
+  const value = game.valueHistory.length ? game.valueHistory[game.valueHistory.length - 1] : game.config.start_cash;
+  const profit = value - game.config.start_cash;
+  const profitPct = profit / game.config.start_cash * 100;
+  const cards = [
+    { label: "Portfolio value", value: `${value.toLocaleString(undefined, { maximumFractionDigits: 0 })} EGP` },
+    { label: "Profit / loss", value: `${profit >= 0 ? "+" : ""}${profit.toLocaleString(undefined, { maximumFractionDigits: 0 })} EGP`, cls: profit >= 0 ? "good" : "critical" },
+    { label: "Profit %", value: `${profitPct >= 0 ? "+" : ""}${profitPct.toFixed(2)}%`, cls: profitPct >= 0 ? "good" : "critical" },
+    { label: "Current holdings", value: game.holdings.length ? game.holdings.join(" + ") : "—" },
+    { label: "Fees paid so far", value: `${game.feesPaidTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })} EGP`, cls: game.feesPaidTotal > 0 ? "critical" : "" },
+  ];
+  document.getElementById("gameKpiGrid").innerHTML = cards.map((c) => `
+    <div class="kpi-card"><div class="label">${c.label}</div><div class="value ${c.cls || ""}">${c.value}</div></div>
+  `).join("");
+
+  const risk = computeRiskStats(game.valueHistory);
+  const riskCards = [
+    { label: "Volatility (annualized)", value: `${risk.volatility_pct.toFixed(2)}%` },
+    { label: "Sharpe (rf = 0%)", value: risk.sharpe.toFixed(2) },
+    { label: "Max drawdown", value: `${risk.max_drawdown_pct.toFixed(2)}%` },
+  ];
+  document.getElementById("gameRiskGrid").innerHTML = riskCards.map((c) => `
+    <div class="kpi-card"><div class="label">${c.label}</div><div class="value">${c.value}</div></div>
+  `).join("");
+
+  renderGameDeltaRow(profitPct);
+}
+
+// "+3.2% vs. buy-and-hold" — player's profit % so far compared against each
+// benchmark's profit % AS OF THE SAME DAY (not the benchmark's final value),
+// so the comparison is fair while the game is still in progress.
+function renderGameDeltaRow(playerProfitPct) {
+  const row = document.getElementById("gameDeltaRow");
+  if (game.dayIndex < 0) { row.textContent = ""; return; }
+  const idx = game.dayIndex;
+  const entries = [
+    ["Equal-weight (all 8)", game.benchmarks.equal_weight],
+    ["Best pair in hindsight", game.benchmarks.best_hindsight_pair],
+    ...(game.benchmarks.egx_index ? [["EGX30 index", game.benchmarks.egx_index]] : []),
+  ];
+  const parts = entries.map(([label, b]) => {
+    const benchProfitPctToDate = (b.values[idx] / game.config.start_cash - 1) * 100;
+    const delta = playerProfitPct - benchProfitPctToDate;
+    return `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}% vs. ${label}`;
+  });
+  row.textContent = parts.join("  ·  ");
+}
+
+function renderGameEquityChart() {
+  destroy("gameEquityChart");
+  const canvas = document.getElementById("gameEquityChart");
+  const n = game.dayIndex + 1; // days actually revealed so far — benchmarks are sliced the same way, no lookahead on this chart either
+  const dates = n > 0 ? game.config.trading_days.slice(0, n) : [];
+  const opts = gridOptions();
+
+  const datasets = [{
+    label: "Your portfolio", data: game.valueHistory, borderColor: COLOR.blue, backgroundColor: COLOR.blue,
+    pointRadius: 0, borderWidth: 2.5, tension: 0.1,
+  }];
+  if (n > 0 && game.benchmarks) {
+    const benchLines = [
+      ["Equal-weight (all 8)", game.benchmarks.equal_weight, COLOR.aqua],
+      ["Best pair in hindsight", game.benchmarks.best_hindsight_pair, COLOR.orange],
+      ...(game.benchmarks.egx_index ? [["EGX30 index", game.benchmarks.egx_index, COLOR.violet]] : []),
+    ];
+    for (const [label, b, color] of benchLines) {
+      datasets.push({
+        label, data: b.values.slice(0, n), borderColor: color, backgroundColor: color,
+        pointRadius: 0, borderWidth: 1.5, borderDash: [5, 3], tension: 0.1,
+      });
+    }
+  }
+
+  charts.gameEquityChart = new Chart(canvas, {
+    type: "line",
+    data: { labels: dates, datasets },
+    options: { ...opts, plugins: { ...opts.plugins, legend: { display: true } } },
+  });
+}
+
+function renderGameSummary() {
+  const value = game.valueHistory[game.valueHistory.length - 1];
+  const profit = value - game.config.start_cash;
+  const profitPct = profit / game.config.start_cash * 100;
+  const playerRisk = computeRiskStats(game.valueHistory);
+  const ew = game.benchmarks.equal_weight;
+  const bp = game.benchmarks.best_hindsight_pair;
+  const idx = game.benchmarks.egx_index;
+
+  const row = (label, val, pct, risk, sub) => `
+    <div class="kpi-card">
+      <div class="label">${label}</div>
+      <div class="value ${pct >= 0 ? "good" : "critical"}">${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%</div>
+      <div class="sub">${val.toLocaleString(undefined, { maximumFractionDigits: 0 })} EGP${sub ? " · " + sub : ""}</div>
+      <div class="sub">Vol ${risk.volatility_pct.toFixed(1)}% · Sharpe ${risk.sharpe.toFixed(2)} · MaxDD ${risk.max_drawdown_pct.toFixed(1)}%</div>
+    </div>`;
+
+  const rows = [
+    row("You" + (game.isReplay ? " (replay)" : ""), value, profitPct, playerRisk,
+      `Fees paid: ${game.feesPaidTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })} EGP`),
+    row("Equal-weight, all 8", ew.final_value, ew.profit_pct, ew, game.feeEnabled ? "1 initial buy-in fee, never traded again" : "fees off"),
+    row("Best 2-stock pair in hindsight", bp.final_value, bp.profit_pct, bp,
+      bp.symbols.join(" + ") + (game.feeEnabled ? " · 1 initial buy-in fee" : "")),
+  ];
+  if (idx) rows.push(row("EGX30 index", idx.final_value, idx.profit_pct, idx));
+  document.getElementById("gameSummaryGrid").innerHTML = rows.join("");
+
+  const beatEw = profitPct > ew.profit_pct;
+  const beatBp = profitPct > bp.profit_pct;
+  document.getElementById("gameSummaryNote").textContent =
+    `You ${beatEw ? "beat" : "trailed"} the equal-weight benchmark and ${beatBp ? "beat" : "trailed"} the best-possible fixed pair chosen with hindsight. `
+    + "The hindsight pair is the single best-performing static 50/50 pair held the whole period — a ceiling reference, not something you could have known in advance.";
+  document.getElementById("gameSummaryPanel").style.display = "block";
+  document.getElementById("gameReplayControls").style.display = "flex";
+
+  const saveBtn = document.getElementById("gameSaveReplayButton");
+  const saveNote = document.getElementById("gameSaveNote");
+  if (!game.hasCompletedOnce) {
+    // First-ever completion this session: auto-save, no button needed.
+    game.hasCompletedOnce = true;
+    saveBtn.style.display = "none";
+    gameSaveAttempt(/* silent */ true);
+  } else if (game.isReplay) {
+    // A completed replay branch — never overwrites the original automatically.
+    saveBtn.style.display = "inline-block";
+    saveNote.textContent = "This is a replay of an earlier decision point — it won't be added to the leaderboard unless you save it.";
+  } else {
+    saveBtn.style.display = "none";
+  }
+}
+
+async function gameSaveAttempt(silent = false) {
+  const value = game.valueHistory[game.valueHistory.length - 1];
+  const profitPct = (value - game.config.start_cash) / game.config.start_cash * 100;
+  const risk = computeRiskStats(game.valueHistory);
+  const body = {
+    profit_pct: profitPct,
+    final_value: value,
+    volatility_pct: risk.volatility_pct,
+    sharpe: risk.sharpe,
+    max_drawdown_pct: risk.max_drawdown_pct,
+    fees_paid: game.feesPaidTotal,
+    fee_enabled: game.feeEnabled,
+    start_cash: game.config.start_cash,
+    start_date: game.config.start_date,
+    end_date: game.config.end_date,
+    is_replay: game.isReplay,
+    holdings_path: game.snapshots.filter(Boolean).map((s) => s.holdings),
+  };
+  const saveNote = document.getElementById("gameSaveNote");
+  try {
+    const res = await fetch(`${API}/game/leaderboard`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`save failed (${res.status})`);
+    saveNote.textContent = silent ? "✓ Saved to leaderboard." : "✓ Replay saved as a new attempt.";
+    document.getElementById("gameSaveReplayButton").style.display = "none";
+    await loadGameLeaderboard();
+  } catch (e) {
+    saveNote.textContent = `Couldn't save to the leaderboard: ${e.message}`;
+  }
+}
+
+async function loadGameLeaderboard() {
+  const body = document.getElementById("gameLeaderboardBody");
+  try {
+    const attempts = await fetchJSON(`${API}/game/leaderboard`);
+    if (!attempts.length) {
+      body.innerHTML = `<tr><td colspan="10" class="empty-note">No attempts saved yet — finish a playthrough to appear here.</td></tr>`;
+      return;
+    }
+    body.innerHTML = attempts.map((a, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${new Date(a.played_at).toLocaleString()}</td>
+        <td>${(a.start_cash ?? 100000).toLocaleString()} EGP · ${a.start_date ?? "?"}–${a.end_date ?? "?"}</td>
+        <td class="${a.profit_pct >= 0 ? "action-buy" : "action-sell"}">${a.profit_pct >= 0 ? "+" : ""}${a.profit_pct.toFixed(2)}%</td>
+        <td>${a.final_value.toLocaleString(undefined, { maximumFractionDigits: 0 })} EGP</td>
+        <td>${(a.fees_paid ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} EGP</td>
+        <td>${a.volatility_pct.toFixed(2)}%</td>
+        <td>${a.sharpe.toFixed(2)}</td>
+        <td>${a.max_drawdown_pct.toFixed(2)}%</td>
+        <td>${a.is_replay ? "Replay" : "Original"}</td>
+      </tr>
+    `).join("");
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="10" class="empty-note">Couldn't load the leaderboard: ${e.message}</td></tr>`;
   }
 }
 

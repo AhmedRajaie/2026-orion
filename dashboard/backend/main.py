@@ -43,6 +43,7 @@ from .strategy_service import (
 )
 from .chat_service import ChatError, run_chat_turn
 from .news_service import get_news_with_sentiment
+from . import game_service
 
 DATA_DIR = "data/egx"
 
@@ -786,6 +787,72 @@ def news(symbol: str, refresh: bool = False) -> dict:
     """Recent headlines + a Gemini-generated summary/sentiment read for
     `symbol`. Cached for 15 minutes per symbol; pass refresh=true to bypass."""
     return get_news_with_sentiment(symbol, refresh=refresh)
+
+
+# --------------------------------------------------------- asset management game ----
+# Day-by-day play/switch state machine lives client-side (app.js) — these
+# endpoints supply the setup-screen-configurable inputs (config, raw price
+# series, deterministic benchmarks — all parameterized by whatever starting
+# cash / date range / fee settings the player chose) and a small local
+# leaderboard file.
+@app.get("/game/date-bounds")
+def game_date_bounds() -> dict:
+    return game_service.get_date_bounds()
+
+
+@app.get("/game/config")
+def game_config(start_date: str | None = None, end_date: str | None = None, start_cash: float | None = None) -> dict:
+    try:
+        return game_service.get_config(start_date, end_date, start_cash)
+    except game_service.InvalidGameRange as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@app.get("/game/prices")
+def game_prices(start_date: str | None = None, end_date: str | None = None) -> dict:
+    try:
+        return game_service.get_prices(start_date, end_date)
+    except game_service.InvalidGameRange as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@app.get("/game/benchmarks")
+def game_benchmarks(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    start_cash: float | None = None,
+    fee_enabled: bool = game_service.DEFAULT_FEE_ENABLED,
+    custody_fee_enabled: bool = game_service.DEFAULT_CUSTODY_FEE_ENABLED,
+) -> dict:
+    try:
+        return game_service.get_benchmarks(start_date, end_date, start_cash, fee_enabled, custody_fee_enabled)
+    except game_service.InvalidGameRange as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+class GameAttempt(BaseModel):
+    profit_pct: float
+    final_value: float
+    volatility_pct: float
+    sharpe: float
+    max_drawdown_pct: float
+    fees_paid: float = 0.0
+    fee_enabled: bool = True
+    start_cash: float = game_service.DEFAULT_START_CASH
+    start_date: str = game_service.DEFAULT_START_DATE
+    end_date: str = game_service.DEFAULT_END_DATE
+    is_replay: bool = False
+    holdings_path: list[list[str]] = Field(default_factory=list)  # [[sym_a, sym_b], ...] per day
+
+
+@app.get("/game/leaderboard")
+def game_leaderboard() -> list[dict]:
+    return game_service.load_leaderboard()
+
+
+@app.post("/game/leaderboard")
+def game_save_attempt(attempt: GameAttempt) -> dict:
+    return game_service.save_attempt(attempt.model_dump())
 
 
 # Serves the frontend itself at http://localhost:8000 (index.html at "/",

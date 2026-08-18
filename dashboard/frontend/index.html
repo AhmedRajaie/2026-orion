@@ -115,6 +115,8 @@
       cursor: pointer;
     }
     button:hover { filter: brightness(1.1); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+    button:disabled:hover { filter: none; }
     button.secondary { background: var(--surface-inset); border: 1px solid var(--border); color: var(--text-primary); font-weight: 500; }
     button.small { padding: 5px 10px; font-size: 0.75rem; }
 
@@ -240,6 +242,37 @@
     .news-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
     .news-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 
+    /* ---- asset management game ---- */
+    .game-tile {
+      cursor: pointer; border: 2px solid var(--border); transition: border-color 0.15s, transform 0.1s;
+      position: relative;
+    }
+    .game-tile:hover { border-color: var(--text-muted); }
+    .game-tile.held { border-color: #3987e5; box-shadow: 0 0 0 1px #3987e5; }
+    .game-tile.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+    .game-tile h3 { display: flex; justify-content: space-between; align-items: center; }
+    .game-tile .held-badge {
+      font-size: 0.65rem; font-weight: 700; color: #fff; background: #3987e5;
+      border-radius: 999px; padding: 1px 8px; text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    .game-tile-chart { height: 90px; }
+
+    .game-day-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+    #gameDayLabel { font-weight: 600; font-size: 0.95rem; }
+
+    @keyframes flourish-rise {
+      0%   { opacity: 0; transform: translateY(4px) scale(0.9); }
+      15%  { opacity: 1; transform: translateY(0) scale(1.05); }
+      75%  { opacity: 1; transform: translateY(-2px) scale(1); }
+      100% { opacity: 0; transform: translateY(-10px) scale(1); }
+    }
+    .game-flourish {
+      display: inline-block; font-weight: 700; font-size: 0.85rem; padding: 2px 10px; border-radius: 999px;
+      animation: flourish-rise 1.6s ease-out;
+    }
+    .game-flourish.up { color: var(--status-good); background: rgba(12,163,12,0.12); }
+    .game-flourish.down { color: var(--status-critical); background: rgba(208,59,59,0.12); }
+
     /* ---- chat widget: fixed bottom-right, collapsible ---- */
     #chatToggle {
       position: fixed; bottom: 20px; right: 20px; z-index: 40;
@@ -291,6 +324,7 @@
     <button type="button" data-tab="models">Model Comparison</button>
     <button type="button" data-tab="strategies">Strategies</button>
     <button type="button" data-tab="performance">Performance Results</button>
+    <button type="button" data-tab="game">Asset Game</button>
   </nav>
 
   <div class="tab-panel active" id="tab-simulator">
@@ -648,6 +682,118 @@
       <div class="graphs-grid" id="performanceGraphsGrid"></div>
     </div>
   </div><!-- /tab-performance -->
+
+  <div class="tab-panel" id="tab-game">
+    <div class="panel" id="gameSetupPanel">
+      <div class="panel-header">
+        <h2>Asset Management Game — Setup</h2>
+      </div>
+      <p class="disclaimer">
+        Universe is fixed at 8 EGX stocks (COMI, HRHO, TMGH, SWDY, FWRY, ABUK, PHDC, EFID) — everything else below is yours to
+        configure before you start. Always invested exactly 50/50 across 2 of the 8, never in cash, never 1 or 3+.
+      </p>
+      <div class="controls" style="margin-bottom:6px">
+        <div class="control">
+          <label for="gameSetupCash">Starting cash (EGP)</label>
+          <input type="number" id="gameSetupCash" value="100000" min="1000" step="1000"/>
+        </div>
+        <div class="control">
+          <label for="gameSetupStart">Start date</label>
+          <input type="date" id="gameSetupStart" value="2025-07-06"/>
+        </div>
+        <div class="control">
+          <label for="gameSetupEnd">End date</label>
+          <input type="date" id="gameSetupEnd" value="2025-08-04"/>
+        </div>
+      </div>
+      <div class="toggle-row" style="margin-bottom:10px">
+        <label><input type="checkbox" id="gameSetupFeeEnabled" checked/> Trading fees (EFG Hermes schedule — ~0.55% of trade value, EGP 15 minimum per trade)</label>
+        <label><input type="checkbox" id="gameSetupCustodyEnabled"/> Annual custody fee (0.01% of value, charged each Dec 31 within range)</label>
+      </div>
+      <p class="disclaimer" id="gameSetupHint"></p>
+      <button type="button" id="gameSetupStartButton">▶ Start game</button>
+    </div>
+
+    <div id="gamePlayArea" style="display:none">
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Asset Management Game</h2>
+        <button type="button" class="secondary" id="gameChangeSetupButton">⚙ Change setup</button>
+      </div>
+      <p class="disclaimer" id="gameRulesText"></p>
+
+      <div class="kpi-grid" id="gameKpiGrid" style="margin-bottom:10px"></div>
+      <div class="kpi-grid" id="gameRiskGrid" style="margin-bottom:10px"></div>
+      <p class="disclaimer" id="gameDeltaRow" style="margin-bottom:16px"></p>
+
+      <div class="controls" style="margin-bottom:6px">
+        <div class="control">
+          <button type="button" id="gamePrevButton" class="secondary">◀ Prev</button>
+        </div>
+        <div class="control">
+          <button type="button" id="gameNextButton">Apply &amp; next day ▶</button>
+        </div>
+        <div class="control">
+          <button type="button" id="gamePlayButton" class="secondary">▶ Play</button>
+        </div>
+        <div class="control">
+          <button type="button" id="gameResetButton" class="secondary">Reset game</button>
+        </div>
+      </div>
+
+      <div class="controls" id="gameReplayControls" style="margin-bottom:6px; display:none">
+        <div class="control">
+          <label for="gameJumpInput">Replay from day (0–<span id="gameJumpMax">19</span>, or −1 for start)</label>
+          <input type="number" id="gameJumpInput" value="0" min="-1" max="19" step="1"/>
+        </div>
+        <div class="control">
+          <button type="button" id="gameJumpButton" class="secondary">⤺ Jump &amp; replay from here</button>
+        </div>
+        <div class="control">
+          <p class="disclaimer" style="margin:0">Explore a different path without losing your saved run — nothing overwrites the leaderboard unless you save the replay explicitly.</p>
+        </div>
+      </div>
+
+      <div class="game-day-row">
+        <span id="gameDayLabel">—</span>
+        <span id="gameFlourishSlot"></span>
+      </div>
+      <p class="disclaimer" id="gameHint"></p>
+
+      <div class="graphs-grid" id="gameTileGrid"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Your portfolio vs. benchmarks</h2>
+      <p class="disclaimer" style="margin-top:0" id="gameChartNote">All lines start at the same starting cash and reveal day by day alongside your play — no benchmark shows you the future either.</p>
+      <div class="chart-wrap short"><canvas id="gameEquityChart"></canvas></div>
+    </div>
+
+    <div class="panel" id="gameSummaryPanel" style="display:none">
+      <h2>Game over — final results</h2>
+      <div class="kpi-grid" id="gameSummaryGrid"></div>
+      <p class="disclaimer" id="gameSummaryNote"></p>
+      <button type="button" id="gameSaveReplayButton" style="display:none; margin-top:10px">💾 Save this replay as a new attempt</button>
+      <p class="disclaimer" id="gameSaveNote" style="margin-top:8px"></p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Leaderboard</h2>
+        <button type="button" class="secondary" id="gameLeaderboardRefresh">Refresh</button>
+      </div>
+      <div class="results-table-wrap">
+        <table>
+          <thead><tr>
+            <th>#</th><th>Played</th><th>Setup</th><th>Profit %</th><th>Final value</th>
+            <th>Fees paid</th><th>Volatility</th><th>Sharpe</th><th>Max DD</th><th>Type</th>
+          </tr></thead>
+          <tbody id="gameLeaderboardBody"><tr><td colspan="10" class="empty-note">No attempts saved yet — finish a playthrough to appear here.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    </div><!-- /gamePlayArea -->
+  </div><!-- /tab-game -->
 
   <button type="button" id="chatToggle" title="Ask about this dashboard">💬</button>
   <div id="chatWindow">
