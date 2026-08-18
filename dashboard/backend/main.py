@@ -41,6 +41,8 @@ from .strategy_service import (
     run_weekly_mean_reversion_backtest,
     to_jsonable,
 )
+from .chat_service import ChatError, run_chat_turn
+from .news_service import get_news_with_sentiment
 
 DATA_DIR = "data/egx"
 
@@ -749,6 +751,41 @@ def strategy_performance(
         "ma_crossover": ma_result,
         "weekly_mean_reversion": weekly_result,
     })
+
+
+# ---------------------------------------------------------------- chat agent ----
+class ChatMessage(BaseModel):
+    role: str
+    text: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = Field(default_factory=list)
+    context: dict = Field(default_factory=dict)
+
+
+@app.post("/chat")
+def chat(request: ChatRequest) -> dict:
+    """Grounded chat over whatever's currently on screen. `context` is built
+    client-side from the current symbol/universe/date-range/backtest params —
+    see chat_tools.DashboardContext for the expected shape."""
+    try:
+        return run_chat_turn(
+            request.message,
+            [m.model_dump() for m in request.history],
+            request.context,
+        )
+    except ChatError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+# ---------------------------------------------------------------------- news ----
+@app.get("/news/{symbol}")
+def news(symbol: str, refresh: bool = False) -> dict:
+    """Recent headlines + a Gemini-generated summary/sentiment read for
+    `symbol`. Cached for 15 minutes per symbol; pass refresh=true to bypass."""
+    return get_news_with_sentiment(symbol, refresh=refresh)
 
 
 # Serves the frontend itself at http://localhost:8000 (index.html at "/",

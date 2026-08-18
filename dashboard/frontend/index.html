@@ -225,6 +225,48 @@
     .graphs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
     .graph-card { background: var(--surface-inset); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
     .graph-card h3 { font-size: 0.82rem; margin: 0 0 8px; color: var(--text-secondary); font-weight: 600; }
+
+    /* ---- news panel ---- */
+    .news-summary { background: var(--surface-inset); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .news-sentiment { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; margin-bottom: 8px; }
+    .news-sentiment.positive { background: rgba(12,163,12,0.15); color: var(--status-good); }
+    .news-sentiment.neutral { background: rgba(250,178,25,0.15); color: var(--status-warning); }
+    .news-sentiment.negative { background: rgba(208,59,59,0.15); color: var(--status-critical); }
+    .news-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+    .news-list li { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .news-list li:last-child { border-bottom: none; padding-bottom: 0; }
+    .news-list a { color: var(--text-primary); font-size: 0.85rem; font-weight: 500; text-decoration: none; }
+    .news-list a:hover { text-decoration: underline; }
+    .news-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+    .news-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+
+    /* ---- chat widget: fixed bottom-right, collapsible ---- */
+    #chatToggle {
+      position: fixed; bottom: 20px; right: 20px; z-index: 40;
+      width: 52px; height: 52px; border-radius: 50%; padding: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem; box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+    }
+    #chatWindow {
+      position: fixed; bottom: 84px; right: 20px; z-index: 40;
+      width: 340px; max-width: calc(100vw - 40px); height: 460px; max-height: calc(100vh - 120px);
+      background: var(--surface-panel); border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.3);
+      display: none; flex-direction: column; overflow: hidden;
+    }
+    #chatWindow.open { display: flex; }
+    .chat-header { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .chat-header strong { font-size: 0.88rem; }
+    .chat-header span { font-size: 0.7rem; color: var(--text-muted); }
+    #chatMessages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .chat-msg { font-size: 0.82rem; line-height: 1.4; padding: 8px 10px; border-radius: 8px; max-width: 88%; white-space: pre-wrap; }
+    .chat-msg.user { align-self: flex-end; background: #3987e5; color: #fff; }
+    .chat-msg.model { align-self: flex-start; background: var(--surface-inset); border: 1px solid var(--border); color: var(--text-primary); }
+    .chat-msg.error { align-self: flex-start; background: rgba(208,59,59,0.12); border: 1px solid var(--status-critical); color: var(--status-critical); }
+    .chat-msg.pending { align-self: flex-start; color: var(--text-muted); font-style: italic; }
+    .chat-input-row { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--border); }
+    .chat-input-row input { flex: 1; background: var(--surface-inset); border: 1px solid var(--border); color: var(--text-primary); border-radius: 6px; padding: 8px 10px; font-size: 0.82rem; }
+    .chat-input-row button { padding: 8px 12px; font-size: 0.82rem; }
   </style>
 </head>
 <body>
@@ -300,6 +342,14 @@
   <div class="panel">
     <h2>Key metrics</h2>
     <div class="kpi-grid" id="kpiGrid"></div>
+  </div>
+
+  <div class="panel">
+    <div class="news-header-row">
+      <h2 style="margin:0" id="newsHeading">News &amp; sentiment</h2>
+      <button type="button" class="secondary" id="newsRefreshButton">Refresh</button>
+    </div>
+    <div id="newsContent"><p class="disclaimer">Loading news…</p></div>
   </div>
 
   <div class="panel">
@@ -598,6 +648,22 @@
       <div class="graphs-grid" id="performanceGraphsGrid"></div>
     </div>
   </div><!-- /tab-performance -->
+
+  <button type="button" id="chatToggle" title="Ask about this dashboard">💬</button>
+  <div id="chatWindow">
+    <div class="chat-header">
+      <div>
+        <strong>Dashboard assistant</strong><br/>
+        <span>Answers only from what's currently shown</span>
+      </div>
+      <button type="button" class="secondary" id="chatClose" style="padding:4px 8px">✕</button>
+    </div>
+    <div id="chatMessages"></div>
+    <div class="chat-input-row">
+      <input type="text" id="chatInput" placeholder="Ask about the current chart, indicator, or backtest…" autocomplete="off"/>
+      <button type="button" id="chatSend">Send</button>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

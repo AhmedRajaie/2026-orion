@@ -58,7 +58,7 @@ const state = {
   symbols: [], latestBacktest: null, latestIndicators: null, latestSymbol: null,
   latestForecast: null, latestCompareSymbols: null, latestComparePrices: null, latestCompareRiskReward: null,
   latestBaseline: null, latestStrategyComparison: null,
-  runHistory: [],
+  runHistory: [], chatHistory: [],
 };
 
 async function fetchJSON(url) {
@@ -213,6 +213,11 @@ async function init() {
     })
   );
 
+  document.getElementById("newsRefreshButton").addEventListener("click", () => {
+    loadNews(document.getElementById("symbolSelect").value, true);
+  });
+  initChatWidget();
+
   await runSimulation();
   await runBaselineEquity();
   await runStrategyComparison();
@@ -306,9 +311,11 @@ async function runSimulation() {
     fetchJSON(`${API}/indicators/${symbol}?${indParams}`),
   ]);
 
+  const symbolChanged = state.latestSymbol !== symbol;
   state.latestBacktest = backtest;
   state.latestIndicators = indicators;
   state.latestSymbol = symbol;
+  if (symbolChanged) loadNews(symbol); // cached server-side, cheap to skip when unchanged
 
   renderFieldNote(field, backtest.field);
   renderKPIs(backtest.kpis);
@@ -1258,5 +1265,140 @@ async function renderPerformanceGraphs() {
 }
 
 const MODEL_GRAPH_LABELS = { nn: "NN", lstm: "LSTM" };
+
+// -------------------------------------------------------------- news panel ----
+// News titles/publishers come from an external source and chat replies come
+// from the LLM — unlike the rest of this file's innerHTML use (all internal,
+// known-shape data), that's untrusted text, so it gets escaped before going
+// into the DOM.
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s ?? "";
+  return div.innerHTML;
+}
+
+async function loadNews(symbol, refresh = false) {
+  const container = document.getElementById("newsContent");
+  document.getElementById("newsHeading").textContent = `News & sentiment — ${symbol}`;
+  container.innerHTML = `<p class="disclaimer">Loading news…</p>`;
+  try {
+    const params = refresh ? "?refresh=true" : "";
+    const data = await fetchJSON(`${API}/news/${symbol}${params}`);
+    renderNews(data);
+  } catch (e) {
+    container.innerHTML = `<p class="disclaimer">Couldn't load news right now (${escapeHtml(e.message)}).</p>`;
+  }
+}
+
+function renderNews(data) {
+  const container = document.getElementById("newsContent");
+
+  if (data.message && (!data.headlines || data.headlines.length === 0)) {
+    container.innerHTML = `<p class="disclaimer">${escapeHtml(data.message)}</p>`;
+    return;
+  }
+
+  let html = "";
+  if (data.summary) {
+    const label = (data.sentiment?.label || "Neutral").toLowerCase();
+    html += `<div class="news-summary">
+      <span class="news-sentiment ${label}">${escapeHtml(data.sentiment?.label || "Neutral")}${data.sentiment?.score != null ? ` (${data.sentiment.score.toFixed(2)})` : ""}</span>
+      <p style="margin:6px 0 0">${escapeHtml(data.summary)}</p>
+      ${data.sentiment?.reason ? `<p class="disclaimer" style="margin:6px 0 0">${escapeHtml(data.sentiment.reason)}</p>` : ""}
+    </div>`;
+  } else if (data.message) {
+    html += `<p class="disclaimer">${escapeHtml(data.message)}</p>`;
+  }
+
+  if (data.headlines && data.headlines.length) {
+    html += `<ul class="news-list">${data.headlines.map((h) => `
+      <li>
+        <a href="${escapeHtml(h.url || "#")}" target="_blank" rel="noopener noreferrer">${escapeHtml(h.title)}</a>
+        <div class="news-meta">${escapeHtml(h.publisher || "")}${h.published_at ? " · " + escapeHtml(h.published_at) : ""}</div>
+      </li>`).join("")}</ul>`;
+  }
+
+  container.innerHTML = html || `<p class="disclaimer">No recent news found for this symbol.</p>`;
+}
+
+// ------------------------------------------------------------ chat widget ----
+// Grounds every answer in what's ACTUALLY on screen: this context is read
+// fresh from the DOM/state at send-time, not cached, so it can't go stale
+// mid-conversation. state.backtest is only included once a backtest has
+// actually run (state.latestBacktest set) — otherwise the backend correctly
+// reports "no backtest currently displayed" instead of guessing.
+function buildDashboardContext() {
+  return {
+    symbol: document.getElementById("symbolSelect").value,
+    universe: state.universe,
+    field: document.getElementById("fieldSelect").value,
+    start: document.getElementById("startDate").value || null,
+    end: document.getElementById("endDate").value || null,
+    backtest: state.latestBacktest
+      ? {
+          fast: Number(document.getElementById("fastInput").value),
+          slow: Number(document.getElementById("slowInput").value),
+          capital: Number(document.getElementById("capitalInput").value),
+        }
+      : null,
+  };
+}
+
+function appendChatMessage(role, text, extraClass = "") {
+  const messages = document.getElementById("chatMessages");
+  const div = document.createElement("div");
+  div.className = `chat-msg ${role} ${extraClass}`.trim();
+  div.textContent = text;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+  return div;
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById("chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+
+  appendChatMessage("user", text);
+  const pending = appendChatMessage("model", "Thinking…", "pending");
+
+  try {
+    const body = {
+      message: text,
+      history: state.chatHistory,
+      context: buildDashboardContext(),
+    };
+    const res = await fetch(`${API}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || `request failed (${res.status})`);
+
+    pending.remove();
+    appendChatMessage("model", data.reply);
+    state.chatHistory.push({ role: "user", text });
+    state.chatHistory.push({ role: "model", text: data.reply });
+    // Keep only the most recent turns so the request body doesn't grow
+    // unbounded over a long session.
+    if (state.chatHistory.length > 20) state.chatHistory = state.chatHistory.slice(-20);
+  } catch (e) {
+    pending.remove();
+    appendChatMessage("model", `Sorry, something went wrong: ${e.message}`, "error");
+  }
+}
+
+function initChatWidget() {
+  const toggle = document.getElementById("chatToggle");
+  const win = document.getElementById("chatWindow");
+  toggle.addEventListener("click", () => win.classList.toggle("open"));
+  document.getElementById("chatClose").addEventListener("click", () => win.classList.remove("open"));
+  document.getElementById("chatSend").addEventListener("click", sendChatMessage);
+  document.getElementById("chatInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendChatMessage();
+  });
+}
 
 init();
