@@ -660,5 +660,102 @@
         "TMGH"
       ]
     ]
+  },
+  {
+    "id": 1787123187161,
+    "played_at": "2026-08-19T07:06:27Z",
+    "profit_pct": -8.984848559048086,
+    "final_value": 91015.15144095191,
+    "volatility_pct": 20.112863886782893,
+    "sharpe": -5.729596720038908,
+    "max_drawdown_pct": 10.516304584882036,
+    "fees_paid": 550.7499999999999,
+    "fee_enabled": true,
+    "start_cash": 100000.0,
+    "start_date": "2025-07-06",
+    "end_date": "2025-08-04",
+    "is_replay": false,
+    "holdings_path": [
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ],
+      [
+        "HRHO",
+        "PHDC"
+      ]
+    ]
   }
 ]

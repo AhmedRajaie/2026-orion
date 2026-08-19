@@ -3,8 +3,12 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 .pytest_cache/
-models/
-*.zip
 .DS_Store
 .vscode/
 .env
+# models/ and *.zip used to be ignored here — un-ignored 2026-08-19 so the
+# trained checkpoints (9.2MB total, largest file 8MB — well within GitHub's
+# limits, no LFS needed) are actually part of the backup. Without this, a
+# fresh clone of the repo has a dashboard that starts but silently loses the
+# LSTM/NN/RL model-comparison and RL-strategy features (main.py catches
+# FileNotFoundError and just omits them).

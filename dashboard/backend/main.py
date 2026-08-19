@@ -858,4 +858,21 @@ def game_save_attempt(attempt: GameAttempt) -> dict:
 # Serves the frontend itself at http://localhost:8000 (index.html at "/",
 # app.js alongside it). Mounted last so it only catches requests the API
 # routes above didn't already claim.
+@app.middleware("http")
+async def _no_cache_for_frontend_assets(request, call_next):
+    # StaticFiles ships no Cache-Control header by default, which lets
+    # browsers apply RFC 7234 HEURISTIC caching off Last-Modified alone —
+    # for a file edited yesterday, that can mean a stale app.js/index.html
+    # gets served for HOURS with no revalidation at all ("I click things and
+    # nothing happens" because the browser is silently running old JS).
+    # no-cache (not no-store) still lets the browser cache the bytes, but
+    # forces an If-None-Match/If-Modified-Since check every load, so an
+    # unchanged file is a cheap 304 and a changed one is never missed.
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".js", ".css", ".html")):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
+
+
 app.mount("/", StaticFiles(directory="dashboard/frontend", html=True), name="frontend")
