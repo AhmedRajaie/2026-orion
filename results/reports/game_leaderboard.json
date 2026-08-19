@@ -468,6 +468,123 @@
     ]
   },
   {
+    "id": 1787123586189,
+    "played_at": "2026-08-19T07:13:06Z",
+    "profit_pct": 0.6261640827419493,
+    "final_value": 3018.7849224822585,
+    "volatility_pct": 19.059735167739746,
+    "sharpe": 0.9928957489565636,
+    "max_drawdown_pct": 4.299544416646391,
+    "fees_paid": 30.0,
+    "fee_enabled": true,
+    "start_cash": 3000.0,
+    "start_date": "2025-07-28",
+    "end_date": "2025-08-31",
+    "is_replay": false,
+    "holdings_path": [
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ],
+      [
+        "FWRY",
+        "SWDY"
+      ]
+    ]
+  },
+  {
     "id": 1787047935792,
     "played_at": "2026-08-18T10:12:15Z",
     "profit_pct": -2.0439130471538665,
